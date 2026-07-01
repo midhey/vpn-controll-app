@@ -6,9 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"vpn-control-app/agent/internal/agent"
+	"vpn-control-app/agent/internal/httpapi"
 )
 
 type commonFlags struct {
@@ -32,6 +34,8 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runIssue(args[1:], stdout, stderr)
 	case "revoke":
 		return runRevoke(args[1:], stdout, stderr)
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		printUsage(stdout)
 		return 0
@@ -98,6 +102,40 @@ func runRevoke(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	return printResult(stdout, stderr, common.json, result, printRevoke)
+}
+
+func runServe(args []string, stdout io.Writer, stderr io.Writer) int {
+	fs, common := newFlagSet("serve", stderr)
+	listen := fs.String("listen", envOrDefault("VPN_AGENT_LISTEN", "127.0.0.1:8090"), "HTTP listen address")
+	keyID := fs.String("hmac-key-id", os.Getenv("VPN_AGENT_KEY_ID"), "HMAC key id")
+	secret := fs.String("hmac-secret", os.Getenv("VPN_AGENT_SECRET"), "HMAC secret")
+	allowIPs := fs.String("allow-ip", envOrDefault("VPN_AGENT_ALLOW_IPS", "127.0.0.1,::1"), "comma-separated allowed client IPs/CIDRs")
+	allowNoAuth := fs.Bool("allow-no-auth", false, "allow unsigned requests when no HMAC secret is configured")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	service := agent.NewService(common.opts)
+	server, err := httpapi.NewServer(service, httpapi.Config{
+		Auth: httpapi.AuthConfig{
+			KeyID:       *keyID,
+			Secret:      *secret,
+			AllowedIPs:  splitCSV(*allowIPs),
+			AllowNoAuth: *allowNoAuth,
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "vpn-agent listening on %s\n", *listen)
+	if *secret == "" && !*allowNoAuth {
+		fmt.Fprintln(stdout, "HMAC secret is not configured; authenticated endpoints will reject requests")
+	}
+	if err := httpapi.ListenAndServe(context.Background(), *listen, server.Handler()); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return 0
 }
 
 func newFlagSet(name string, output io.Writer) (*flag.FlagSet, *commonFlags) {
@@ -167,6 +205,9 @@ func printPeers(w io.Writer, peers []agent.PeerView) {
 func printIssue(w io.Writer, result agent.IssueResult) {
 	fmt.Fprintf(w, "public_key: %s\n", result.PublicKey)
 	fmt.Fprintf(w, "client_ip: %s\n", result.ClientIP)
+	if result.VPNURL != "" {
+		fmt.Fprintf(w, "vpn_url: %s\n", result.VPNURL)
+	}
 	fmt.Fprintln(w, "config:")
 	fmt.Fprintln(w, result.Config)
 }
@@ -205,4 +246,13 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  peers")
 	fmt.Fprintln(w, "  issue --name NAME --endpoint-host HOST")
 	fmt.Fprintln(w, "  revoke --public-key KEY")
+	fmt.Fprintln(w, "  serve --hmac-key-id KEY_ID --hmac-secret SECRET")
+}
+
+func envOrDefault(name, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return value
 }

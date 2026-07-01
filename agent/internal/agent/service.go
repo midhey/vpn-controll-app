@@ -121,6 +121,7 @@ type IssueResult struct {
 	PublicKey string `json:"public_key"`
 	ClientIP  string `json:"client_ip"`
 	Config    string `json:"config"`
+	VPNURL    string `json:"vpn_url"`
 }
 
 type RevokeResult struct {
@@ -265,6 +266,23 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 	if err != nil {
 		return IssueResult{}, err
 	}
+	vpnURL, err := awg.RenderAmneziaShareURI(cfg, awg.ShareURIParams{
+		EndpointHost:        endpointHost,
+		DNS:                 req.DNS,
+		NativeConfig:        clientConfig,
+		ClientPrivateKey:    privateKey,
+		ClientPublicKey:     publicKey,
+		ClientIP:            clientIP,
+		ServerPublicKey:     serverPublicKey,
+		PresharedKey:        psk,
+		AllowedIPs:          []string{"0.0.0.0/0", "::/0"},
+		PersistentKeepalive: "25",
+		MTU:                 "1376",
+		Description:         req.Name,
+	})
+	if err != nil {
+		return IssueResult{}, err
+	}
 
 	backups, err := s.backup(ctx)
 	if err != nil {
@@ -284,7 +302,7 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 		return IssueResult{}, s.rollback(ctx, backups, fmt.Errorf("peer %q not found in runtime after sync", publicKey))
 	}
 
-	return IssueResult{PublicKey: publicKey, ClientIP: clientIP.String(), Config: clientConfig}, nil
+	return IssueResult{PublicKey: publicKey, ClientIP: clientIP.String(), Config: clientConfig, VPNURL: vpnURL}, nil
 }
 
 func (s *Service) Revoke(ctx context.Context, publicKey string) (RevokeResult, error) {
