@@ -142,13 +142,16 @@ func (s *Service) Inspect(ctx context.Context) (InspectResult, error) {
 	if err != nil {
 		return InspectResult{}, err
 	}
-	configText, err := s.docker.ReadFile(ctx, s.opts.Container, s.opts.ConfigPath)
-	if err != nil {
-		return InspectResult{}, err
-	}
-	cfg, err := awg.ParseConfig(configText)
-	if err != nil {
-		return InspectResult{}, err
+	var cfg *awg.Config
+	if configInfo.Exists {
+		configText, err := s.docker.ReadFile(ctx, s.opts.Container, s.opts.ConfigPath)
+		if err != nil {
+			return InspectResult{}, err
+		}
+		cfg, err = awg.ParseConfig(configText)
+		if err != nil {
+			return InspectResult{}, err
+		}
 	}
 	runtimeText, err := s.docker.AWGShow(ctx, s.opts.Container, s.opts.Interface)
 	if err != nil {
@@ -157,7 +160,10 @@ func (s *Service) Inspect(ctx context.Context) (InspectResult, error) {
 	runtime := awg.ParseAWGShow(runtimeText)
 
 	warnings := []string{}
-	if configInfo.Mode != "" && configInfo.Mode != "600" {
+	if !configInfo.Exists {
+		warnings = append(warnings, fmt.Sprintf("config file %s is missing", s.opts.ConfigPath))
+	}
+	if configInfo.Exists && configInfo.Mode != "600" {
 		warnings = append(warnings, fmt.Sprintf("config mode is %s, expected 600", configInfo.Mode))
 	}
 	if clientsInfo.Exists && clientsInfo.Mode != "600" {
@@ -165,6 +171,13 @@ func (s *Service) Inspect(ctx context.Context) (InspectResult, error) {
 	}
 	if runtime.InterfaceName != "" && runtime.InterfaceName != s.opts.Interface {
 		warnings = append(warnings, fmt.Sprintf("runtime interface is %s, expected %s", runtime.InterfaceName, s.opts.Interface))
+	}
+
+	configListenPort := ""
+	peerCountConfig := 0
+	if cfg != nil {
+		configListenPort = cfg.ListenPort()
+		peerCountConfig = len(cfg.Peers)
 	}
 
 	return InspectResult{
@@ -175,14 +188,14 @@ func (s *Service) Inspect(ctx context.Context) (InspectResult, error) {
 		Interface:        s.opts.Interface,
 		RuntimeInterface: runtime.InterfaceName,
 		RuntimePublicKey: runtime.PublicKey,
-		ListenPort:       firstNonEmpty(runtime.ListenPort, cfg.ListenPort()),
+		ListenPort:       firstNonEmpty(runtime.ListenPort, configListenPort),
 		ConfigPath:       s.opts.ConfigPath,
 		ConfigExists:     configInfo.Exists,
 		ConfigMode:       configInfo.Mode,
 		ConfigSize:       configInfo.Size,
 		ClientsTablePath: s.opts.ClientsTablePath,
 		ClientsTableMode: clientsInfo.Mode,
-		PeerCountConfig:  len(cfg.Peers),
+		PeerCountConfig:  peerCountConfig,
 		PeerCountRuntime: len(runtime.Peers),
 		Warnings:         warnings,
 	}, nil
