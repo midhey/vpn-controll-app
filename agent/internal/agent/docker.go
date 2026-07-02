@@ -105,6 +105,11 @@ func (d DockerClient) BackupFile(ctx context.Context, container, filePath, backu
 	return err
 }
 
+func (d DockerClient) RemoveFile(ctx context.Context, container, filePath string) error {
+	_, err := d.Shell(ctx, container, "rm -f "+shellQuote(filePath)+" && sync")
+	return err
+}
+
 func (d DockerClient) RestoreFile(ctx context.Context, container, backupPath, filePath, mode string) error {
 	script := strings.Join([]string{
 		"cp -p " + shellQuote(backupPath) + " " + shellQuote(filePath),

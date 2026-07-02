@@ -62,17 +62,40 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
+// dockerAPI is the container boundary used by Service; DockerClient is the
+// production implementation, tests substitute a fake.
+type dockerAPI interface {
+	ContainerInfo(ctx context.Context, container string) (ContainerInfo, error)
+	ReadFile(ctx context.Context, container, filePath string) (string, error)
+	ReadFileOrEmptyArray(ctx context.Context, container, filePath string) (string, error)
+	FileInfo(ctx context.Context, container, filePath string) (FileInfo, error)
+	WriteFileAtomic(ctx context.Context, container, filePath string, data []byte, mode string) error
+	BackupFile(ctx context.Context, container, filePath, backupPath string, required bool) error
+	RestoreFile(ctx context.Context, container, backupPath, filePath, mode string) error
+	RemoveFile(ctx context.Context, container, filePath string) error
+	SyncConf(ctx context.Context, container, iface, configPath string) error
+	AWGShow(ctx context.Context, container, iface string) (string, error)
+	GeneratePrivateKey(ctx context.Context, container string) (string, error)
+	PublicKey(ctx context.Context, container, privateKey string) (string, error)
+}
+
 type Service struct {
-	opts   Options
-	docker DockerClient
-	now    func() time.Time
+	opts        Options
+	docker      dockerAPI
+	now         func() time.Time
+	acquireLock func(path string) (*FileLock, error)
 }
 
 func NewService(opts Options) *Service {
+	return newServiceWithDocker(opts, NewDockerClient())
+}
+
+func newServiceWithDocker(opts Options, docker dockerAPI) *Service {
 	return &Service{
-		opts:   opts.withDefaults(),
-		docker: NewDockerClient(),
-		now:    time.Now,
+		opts:        opts.withDefaults(),
+		docker:      docker,
+		now:         time.Now,
+		acquireLock: AcquireLock,
 	}
 }
 
@@ -218,7 +241,7 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 		return IssueResult{}, fmt.Errorf("endpoint host is required; pass --endpoint-host or set VPN_AGENT_ENDPOINT_HOST")
 	}
 
-	lock, err := AcquireLock(s.opts.LockPath)
+	lock, err := s.acquireLock(s.opts.LockPath)
 	if err != nil {
 		return IssueResult{}, fmt.Errorf("acquire lock %s: %w", s.opts.LockPath, err)
 	}
@@ -330,7 +353,7 @@ func (s *Service) Revoke(ctx context.Context, publicKey string) (RevokeResult, e
 		return RevokeResult{}, fmt.Errorf("public key is required")
 	}
 
-	lock, err := AcquireLock(s.opts.LockPath)
+	lock, err := s.acquireLock(s.opts.LockPath)
 	if err != nil {
 		return RevokeResult{}, fmt.Errorf("acquire lock %s: %w", s.opts.LockPath, err)
 	}
@@ -409,16 +432,23 @@ func (s *Service) readTrimmed(ctx context.Context, filePath string) (string, err
 }
 
 type backupSet struct {
-	ConfigPath       string
-	ClientsTablePath string
+	ConfigPath          string
+	ClientsTablePath    string
+	ClientsTableExisted bool
 }
 
 func (s *Service) backup(ctx context.Context) (backupSet, error) {
-	suffix := ".bak." + time.Now().UTC().Format("20060102T150405") + fmt.Sprintf(".%d", time.Now().UnixNano())
+	now := s.now()
+	suffix := ".bak." + now.UTC().Format("20060102T150405") + fmt.Sprintf(".%d", now.UnixNano())
 	backups := backupSet{
 		ConfigPath:       s.opts.ConfigPath + suffix,
 		ClientsTablePath: s.opts.ClientsTablePath + suffix,
 	}
+	clientsInfo, err := s.docker.FileInfo(ctx, s.opts.Container, s.opts.ClientsTablePath)
+	if err != nil {
+		return backupSet{}, err
+	}
+	backups.ClientsTableExisted = clientsInfo.Exists
 	if err := s.docker.BackupFile(ctx, s.opts.Container, s.opts.ConfigPath, backups.ConfigPath, true); err != nil {
 		return backupSet{}, err
 	}
@@ -441,7 +471,14 @@ func (s *Service) writeState(ctx context.Context, cfg *awg.Config, table awg.Cli
 
 func (s *Service) rollback(ctx context.Context, backups backupSet, cause error) error {
 	restoreConfigErr := s.docker.RestoreFile(ctx, s.opts.Container, backups.ConfigPath, s.opts.ConfigPath, "600")
-	restoreClientsErr := s.docker.RestoreFile(ctx, s.opts.Container, backups.ClientsTablePath, s.opts.ClientsTablePath, "600")
+	var restoreClientsErr error
+	if backups.ClientsTableExisted {
+		restoreClientsErr = s.docker.RestoreFile(ctx, s.opts.Container, backups.ClientsTablePath, s.opts.ClientsTablePath, "600")
+	} else {
+		// The clientsTable did not exist before the mutation; restore that
+		// state instead of materializing an empty file.
+		restoreClientsErr = s.docker.RemoveFile(ctx, s.opts.Container, s.opts.ClientsTablePath)
+	}
 	syncErr := s.docker.SyncConf(ctx, s.opts.Container, s.opts.Interface, s.opts.ConfigPath)
 
 	details := []string{}
