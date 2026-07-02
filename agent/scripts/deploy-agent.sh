@@ -234,6 +234,9 @@ validate_args() {
     if [[ -n "$IDENTITY_FILE" && ! -f "$IDENTITY_FILE" ]]; then
         die "identity file does not exist: $IDENTITY_FILE"
     fi
+    if [[ -n "$IDENTITY_FILE" && ( -n "$SSH_PASSWORD" || "$ASK_PASSWORD" == "1" ) ]]; then
+        die "--identity-file cannot be combined with --password/--ask-password: password mode disables pubkey authentication"
+    fi
     if [[ "$ALLOW_NO_AUTH" == "1" && -n "$HMAC_SECRET" ]]; then
         die "--allow-no-auth is only meaningful when --hmac-secret is empty"
     fi
@@ -486,7 +489,7 @@ Requires=docker.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/vpn-agent/vpn-agent.env
-ExecStart=/bin/sh -lc 'exec "$VPN_AGENT_BIN" serve --container "$VPN_AGENT_CONTAINER" --interface "$VPN_AGENT_INTERFACE" --config-path "$VPN_AGENT_CONFIG_PATH" --clients-table-path "$VPN_AGENT_CLIENTS_TABLE_PATH" --lock-path "$VPN_AGENT_LOCK_PATH" --endpoint-host "$VPN_AGENT_ENDPOINT_HOST" --listen "$VPN_AGENT_LISTEN" --hmac-key-id "$VPN_AGENT_KEY_ID" --hmac-secret "$VPN_AGENT_SECRET" --allow-ip "$VPN_AGENT_ALLOW_IPS" ${VPN_AGENT_ALLOW_NO_AUTH:+--allow-no-auth}'
+ExecStart=/bin/sh -lc 'exec "$VPN_AGENT_BIN" serve --container "$VPN_AGENT_CONTAINER" --interface "$VPN_AGENT_INTERFACE" --config-path "$VPN_AGENT_CONFIG_PATH" --clients-table-path "$VPN_AGENT_CLIENTS_TABLE_PATH" --lock-path "$VPN_AGENT_LOCK_PATH" --endpoint-host "$VPN_AGENT_ENDPOINT_HOST" --listen "$VPN_AGENT_LISTEN" --allow-ip "$VPN_AGENT_ALLOW_IPS" ${VPN_AGENT_ALLOW_NO_AUTH:+--allow-no-auth}'
 Restart=on-failure
 RestartSec=3
 
