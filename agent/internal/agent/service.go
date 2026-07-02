@@ -211,7 +211,7 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 	}
 	defer lock.Release()
 
-	cfg, table, _, err := s.readState(ctx)
+	cfg, table, runtime, err := s.readState(ctx)
 	if err != nil {
 		return IssueResult{}, err
 	}
@@ -231,7 +231,13 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 		return IssueResult{}, fmt.Errorf("generated duplicate public key %q", publicKey)
 	}
 
-	clientIP, err := awg.AllocateFreeIPv4(cfg)
+	// Reserve IPs seen only in runtime as well: a peer present in `awg show`
+	// but missing from the config file must not have its address reissued.
+	runtimeUsed := []string{}
+	for _, peer := range runtime.Peers {
+		runtimeUsed = append(runtimeUsed, peer.AllowedIPs...)
+	}
+	clientIP, err := awg.AllocateFreeIPv4(cfg, runtimeUsed...)
 	if err != nil {
 		return IssueResult{}, err
 	}

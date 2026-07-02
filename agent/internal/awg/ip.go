@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func AllocateFreeIPv4(cfg *Config) (netip.Addr, error) {
+func AllocateFreeIPv4(cfg *Config, extraUsed ...string) (netip.Addr, error) {
 	address, ok := cfg.InterfaceAddress()
 	if !ok {
 		return netip.Addr{}, fmt.Errorf("interface Address is required")
@@ -16,18 +16,27 @@ func AllocateFreeIPv4(cfg *Config) (netip.Addr, error) {
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("invalid interface Address %q: %w", address, err)
 	}
-	prefix = prefix.Masked()
 	if !prefix.Addr().Is4() {
 		return netip.Addr{}, fmt.Errorf("only IPv4 allocation is supported, got %q", address)
 	}
 
 	used := map[netip.Addr]struct{}{}
+	// The interface Address may be the server's own host address rather
+	// than the subnet base; never hand it out to a client.
+	used[prefix.Addr()] = struct{}{}
+	prefix = prefix.Masked()
 	for _, peer := range cfg.Peers {
 		for _, allowed := range peer.AllowedIPs {
 			addr, ok := allowedIPv4Addr(allowed)
 			if ok {
 				used[addr] = struct{}{}
 			}
+		}
+	}
+	for _, allowed := range extraUsed {
+		addr, ok := allowedIPv4Addr(allowed)
+		if ok {
+			used[addr] = struct{}{}
 		}
 	}
 

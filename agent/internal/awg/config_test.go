@@ -97,3 +97,32 @@ func TestAllocateFreeIPv4UsesFirstGap(t *testing.T) {
 		t.Fatalf("allocated IP = %s, want %s", got, want)
 	}
 }
+
+func TestAllocateFreeIPv4SkipsExtraUsed(t *testing.T) {
+	cfg, err := ParseConfig(sampleConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip, err := AllocateFreeIPv4(cfg, "10.8.1.2/32", "10.8.1.4/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ip.String(), "10.8.1.5"; got != want {
+		t.Fatalf("allocated IP = %s, want %s", got, want)
+	}
+}
+
+func TestAllocateFreeIPv4ReservesServerAddress(t *testing.T) {
+	config := strings.Replace(sampleConfig, "Address = 10.8.1.0/24", "Address = 10.8.1.2/24", 1)
+	cfg, err := ParseConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip, err := AllocateFreeIPv4(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ip.String(), "10.8.1.4"; got != want {
+		t.Fatalf("allocated IP = %s, want %s", got, want)
+	}
+}
