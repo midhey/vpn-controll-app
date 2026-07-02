@@ -65,6 +65,9 @@ func newAuthenticator(config AuthConfig) (*authenticator, error) {
 		}
 		auth.allowedNets = append(auth.allowedNets, netipNet{ipnet: network})
 	}
+	if len(auth.allowedNets) == 0 {
+		return nil, fmt.Errorf("IP allowlist is empty; pass 0.0.0.0/0,::/0 explicitly to allow any client")
+	}
 	return auth, nil
 }
 
@@ -124,7 +127,7 @@ func (a *authenticator) authorize(r *http.Request, body []byte) error {
 
 func (a *authenticator) checkAllowlist(r *http.Request) error {
 	if len(a.allowedNets) == 0 {
-		return nil
+		return httpError{status: http.StatusForbidden, message: "IP allowlist is empty"}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

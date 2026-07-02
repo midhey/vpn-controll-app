@@ -100,6 +100,18 @@ func TestAllowlistRejectsRemoteAddress(t *testing.T) {
 	}
 }
 
+func TestEmptyAllowlistIsRejectedAtStartup(t *testing.T) {
+	_, err := NewServer(&fakeService{}, Config{
+		Auth: AuthConfig{
+			KeyID:  "test-key",
+			Secret: "test-secret",
+		},
+	})
+	if err == nil {
+		t.Fatal("NewServer succeeded with empty allowlist, want error")
+	}
+}
+
 func TestIssueAndRevokeHTTPShapes(t *testing.T) {
 	service := &fakeService{}
 	server := newTestServer(t, service)
