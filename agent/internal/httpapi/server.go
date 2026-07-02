@@ -136,7 +136,12 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		if err != nil {
-			writeError(w, httpError{status: http.StatusBadRequest, message: "request body is too large"})
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeError(w, httpError{status: http.StatusRequestEntityTooLarge, message: "request body is too large"})
+			} else {
+				writeError(w, httpError{status: http.StatusBadRequest, message: "failed to read request body"})
+			}
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))

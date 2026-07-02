@@ -118,6 +118,21 @@ func TestAddRemovePeer(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsOverlappingAllowedIPs(t *testing.T) {
+	cfg, err := ParseConfig(sampleConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.AddPeer(Peer{PublicKey: "peer-wide", PresharedKey: "psk", AllowedIPs: []string{"10.8.1.0/24"}})
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate accepted overlapping AllowedIPs")
+	}
+	if !strings.Contains(err.Error(), "overlaps") {
+		t.Fatalf("error = %q, want overlap error", err)
+	}
+}
+
 func TestAllocateFreeIPv4UsesFirstGap(t *testing.T) {
 	cfg, err := ParseConfig(sampleConfig)
 	if err != nil {

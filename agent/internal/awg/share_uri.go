@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,14 @@ func RenderAmneziaShareURI(server *Config, params ShareURIParams) (string, error
 	if port == "" {
 		return "", fmt.Errorf("server ListenPort is required")
 	}
+	portNumber, err := strconv.Atoi(port)
+	if err != nil {
+		return "", fmt.Errorf("invalid server ListenPort %q: %w", port, err)
+	}
+	subnetAddr, subnetBits, err := subnetParts(server)
+	if err != nil {
+		return "", err
+	}
 	dns := params.DNS
 	if len(dns) == 0 {
 		dns = []string{"1.1.1.1", "8.8.8.8"}
@@ -57,7 +66,7 @@ func RenderAmneziaShareURI(server *Config, params ShareURIParams) (string, error
 	clientJSON := map[string]any{
 		"config":                params.NativeConfig,
 		"hostName":              params.EndpointHost,
-		"port":                  mustAtoi(port),
+		"port":                  portNumber,
 		"client_ip":             params.ClientIP.String(),
 		"client_priv_key":       params.ClientPrivateKey,
 		"client_pub_key":        params.ClientPublicKey,
@@ -78,8 +87,8 @@ func RenderAmneziaShareURI(server *Config, params ShareURIParams) (string, error
 		"port":             port,
 		"transport_proto":  "udp",
 		"protocol_version": "2",
-		"subnet_address":   subnetAddress(server),
-		"subnet_cidr":      subnetCIDR(server),
+		"subnet_address":   subnetAddr,
+		"subnet_cidr":      subnetBits,
 		"last_config":      string(clientConfigJSON),
 	}
 	copyAWGFields(server, awgJSON)
@@ -183,37 +192,16 @@ func copyAWGFields(server *Config, dst map[string]any) {
 	}
 }
 
-func subnetAddress(server *Config) string {
+func subnetParts(server *Config) (address string, cidr string, err error) {
 	value, ok := server.InterfaceAddress()
 	if !ok {
-		return ""
+		return "", "", fmt.Errorf("interface Address is required")
 	}
-	if idx := strings.Index(value, "/"); idx >= 0 {
-		return value[:idx]
+	prefix, err := netip.ParsePrefix(value)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid interface Address %q: %w", value, err)
 	}
-	return value
-}
-
-func subnetCIDR(server *Config) string {
-	value, ok := server.InterfaceAddress()
-	if !ok {
-		return ""
-	}
-	if idx := strings.Index(value, "/"); idx >= 0 && idx+1 < len(value) {
-		return value[idx+1:]
-	}
-	return "24"
-}
-
-func mustAtoi(value string) int {
-	n := 0
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return 0
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n
+	return prefix.Addr().String(), strconv.Itoa(prefix.Bits()), nil
 }
 
 func firstNonEmpty(values ...string) string {

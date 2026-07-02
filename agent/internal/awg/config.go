@@ -210,7 +210,11 @@ func (c *Config) Validate() error {
 	}
 
 	publicKeys := map[string]struct{}{}
-	allowedIPs := map[string]struct{}{}
+	type seenPrefix struct {
+		prefix netip.Prefix
+		owner  string
+	}
+	var seen []seenPrefix
 	for i, peer := range c.Peers {
 		if peer.PublicKey == "" {
 			return fmt.Errorf("peer %d has empty PublicKey", i+1)
@@ -224,13 +228,19 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("peer %q has empty AllowedIPs", peer.PublicKey)
 		}
 		for _, allowed := range peer.AllowedIPs {
-			if _, err := netip.ParsePrefix(allowed); err != nil {
+			prefix, err := netip.ParsePrefix(allowed)
+			if err != nil {
 				return fmt.Errorf("peer %q has invalid AllowedIPs %q: %w", peer.PublicKey, allowed, err)
 			}
-			if _, exists := allowedIPs[allowed]; exists {
-				return fmt.Errorf("duplicate AllowedIPs %q", allowed)
+			for _, other := range seen {
+				if other.owner == peer.PublicKey {
+					continue
+				}
+				if prefix.Overlaps(other.prefix) {
+					return fmt.Errorf("AllowedIPs %q of peer %q overlaps %q of peer %q", allowed, peer.PublicKey, other.prefix, other.owner)
+				}
 			}
-			allowedIPs[allowed] = struct{}{}
+			seen = append(seen, seenPrefix{prefix: prefix, owner: peer.PublicKey})
 		}
 	}
 	return nil
