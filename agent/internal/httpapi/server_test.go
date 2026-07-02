@@ -115,7 +115,7 @@ func TestEmptyAllowlistIsRejectedAtStartup(t *testing.T) {
 func TestIssueAndRevokeHTTPShapes(t *testing.T) {
 	service := &fakeService{}
 	server := newTestServer(t, service)
-	body := []byte(`{"name":"Phone","dns":["1.1.1.1"],"endpoint_host":"72.56.69.23","metadata":{"device":"1"}}`)
+	body := []byte(`{"name":"Phone","dns":["1.1.1.1"],"endpoint_host":"203.0.113.99","metadata":{"device":"1"}}`)
 	req := signedRequest(t, http.MethodPost, "/peers", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -126,7 +126,7 @@ func TestIssueAndRevokeHTTPShapes(t *testing.T) {
 	if res.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
-	if service.issueReq.Name != "Phone" || service.issueReq.EndpointHost != "72.56.69.23" {
+	if service.issueReq.Name != "Phone" || service.issueReq.EndpointHost != "203.0.113.99" {
 		t.Fatalf("issue request = %#v", service.issueReq)
 	}
 

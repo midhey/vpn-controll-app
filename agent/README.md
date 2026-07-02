@@ -81,15 +81,17 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vpn-agent ./cmd/vpn-agent
 Если sandbox или окружение не позволяет писать в стандартный Go build cache, укажи `GOCACHE`:
 
 ```bash
-GOCACHE=/private/tmp/vpn-agent-go-build-cache go test ./...
+GOCACHE=$(pwd)/.gocache go test ./...
 ```
+
+Под Windows пакет собирается и тесты проходят, но host lock реализован только для unix: mutating-команды на Windows-хосте вернут ошибку. Основной путь для production - кросс-сборка `GOOS=linux`.
 
 ## Deploy на VPS
 
 Основной способ установки - CLI-скрипт:
 
 ```bash
-agent/scripts/deploy-agent.sh --user root --host 72.56.69.23
+agent/scripts/deploy-agent.sh --user root --host 203.0.113.10
 ```
 
 Скрипт делает полный базовый deploy:
@@ -107,7 +109,7 @@ agent/scripts/deploy-agent.sh --user root --host 72.56.69.23
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23
+  --host 203.0.113.10
 ```
 
 Если нужен конкретный key:
@@ -115,7 +117,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --identity-file ~/.ssh/id_ed25519
 ```
 
@@ -128,7 +130,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --ask-password
 ```
 
@@ -137,11 +139,15 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --password 'ssh-password'
 ```
 
 Передавать пароль аргументом удобно для одноразовой автоматизации, но это хуже с точки зрения безопасности: пароль может попасть в shell history или список процессов. Для ручного запуска предпочтительнее `--ask-password`.
+
+Парольный режим несовместим с `--identity-file`: он отключает pubkey authentication, поэтому скрипт отклонит такую комбинацию.
+
+Первое подключение к новому хосту принимает его SSH host key автоматически (`StrictHostKeyChecking=accept-new`, модель trust-on-first-use). Если это неприемлемо, добавь host key в `known_hosts` заранее.
 
 ### Deploy под non-root пользователем
 
@@ -152,7 +158,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user ubuntu \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --identity-file ~/.ssh/id_ed25519
 ```
 
@@ -161,7 +167,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user ubuntu \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --ask-password \
   --reuse-password-for-sudo
 ```
@@ -171,7 +177,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user ubuntu \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --identity-file ~/.ssh/id_ed25519 \
   --ask-sudo-password
 ```
@@ -181,7 +187,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user deploy \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --no-sudo \
   --remote-path /home/deploy/bin/vpn-agent
 ```
@@ -193,9 +199,9 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --install-service \
-  --endpoint-host 72.56.69.23 \
+  --endpoint-host 203.0.113.10 \
   --hmac-key-id backend \
   --hmac-secret 'change-me'
 ```
@@ -208,12 +214,14 @@ agent/scripts/deploy-agent.sh \
 /etc/systemd/system/vpn-agent.service
 ```
 
+HMAC key id и secret попадают только в env-файл (mode `600`) и читаются агентом из переменных окружения `VPN_AGENT_KEY_ID`/`VPN_AGENT_SECRET`; в командную строку процесса (`/proc/<pid>/cmdline`) они не передаются.
+
 Service слушает `127.0.0.1:8090` по умолчанию. Изменить:
 
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --install-service \
   --listen 127.0.0.1:9090 \
   --hmac-key-id backend \
@@ -225,7 +233,7 @@ agent/scripts/deploy-agent.sh \
 ```bash
 agent/scripts/deploy-agent.sh \
   --user root \
-  --host 72.56.69.23 \
+  --host 203.0.113.10 \
   --install-service \
   --allow-no-auth
 ```
@@ -261,6 +269,9 @@ agent/scripts/deploy-agent.sh --help
 | `--binary` | empty | загрузить готовый binary вместо сборки |
 | `--skip-build` | `false` | не собирать, требует `--binary` |
 | `--skip-inspect` | `false` | не запускать verify через `inspect` |
+| `--keep-artifact` | `false` | не удалять локальный build artifact |
+| `--verbose` | `false` | печатать выполняемые команды |
+| `--endpoint-host` | значение `--host` | публичный endpoint для клиентских конфигов |
 | `--install-service` | `false` | установить systemd service |
 | `--service-name` | `vpn-agent` | имя systemd service |
 | `--listen` | `127.0.0.1:8090` | listen address для HTTP API |
@@ -285,14 +296,14 @@ agent/scripts/deploy-agent.sh \
 Пример копирования бинаря:
 
 ```bash
-scp /tmp/vpn-agent root@72.56.69.23:/usr/local/bin/vpn-agent
-ssh root@72.56.69.23 'chmod 0755 /usr/local/bin/vpn-agent'
+scp /tmp/vpn-agent root@203.0.113.10:/usr/local/bin/vpn-agent
+ssh root@203.0.113.10 'chmod 0755 /usr/local/bin/vpn-agent'
 ```
 
 Быстрая проверка:
 
 ```bash
-ssh root@72.56.69.23 '/usr/local/bin/vpn-agent inspect'
+ssh root@203.0.113.10 '/usr/local/bin/vpn-agent inspect'
 ```
 
 ## CLI
@@ -325,12 +336,12 @@ serve --hmac-key-id KEY_ID --hmac-secret SECRET
 | `--clients-table-path` | `/opt/amnezia/awg/clientsTable` | Путь к `clientsTable` внутри контейнера |
 | `--lock-path` | `/var/lock/vpn-agent.lock` | Host lock file для mutating operations |
 | `--endpoint-host` | empty | Публичный host/IP для generated client configs |
-| `--json` | `false` | Машиночитаемый JSON output |
+| `--json` | `false` | Машиночитаемый JSON output (для `serve` игнорируется) |
 
 `--endpoint-host` можно заменить переменной окружения:
 
 ```bash
-export VPN_AGENT_ENDPOINT_HOST=72.56.69.23
+export VPN_AGENT_ENDPOINT_HOST=203.0.113.10
 ```
 
 Для `issue` endpoint обязателен: либо `--endpoint-host`, либо `VPN_AGENT_ENDPOINT_HOST`.
@@ -396,9 +407,12 @@ JSON schema по текущей реализации:
 
 Warnings появляются, если:
 
+- `awg0.conf` отсутствует (тогда `config_exists=false`, `peer_count_config=0`);
 - mode `awg0.conf` не `600`;
 - mode `clientsTable` не `600`;
 - runtime interface отличается от ожидаемого `--interface`.
+
+Отсутствующий config - не ошибка для `inspect`: команда остаётся диагностической и возвращает состояние с warning.
 
 ## `peers`
 
@@ -423,19 +437,19 @@ vpn-agent peers --json
 ```json
 [
   {
-    "public_key": "7BbOM3SICNLrM2mPggZO1+S52fnZAF9gANLs56V0yjw=",
-    "name": "Admin [macOS Tahoe (26.5)]",
+    "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "name": "Admin laptop",
     "allowed_ips_config": ["10.8.1.1/32"],
     "allowed_ips_runtime": ["10.8.1.1/32"],
     "in_config": true,
     "in_runtime": true,
     "in_clients_table": true,
-    "endpoint": "178.57.116.106:60581",
+    "endpoint": "198.51.100.20:60581",
     "latest_handshake": "55 minutes, 52 seconds ago",
     "transfer_received": "26.80 KiB",
     "transfer_sent": "79.70 KiB",
     "user_data": {
-      "clientName": "Admin [macOS Tahoe (26.5)]",
+      "clientName": "Admin laptop",
       "creationDate": "Wed Jul 1 20:10:19 2026"
     }
   }
@@ -458,7 +472,7 @@ vpn-agent peers --json
 Создает нового peer-а.
 
 ```bash
-vpn-agent issue --name "Alice MacBook" --endpoint-host 72.56.69.23
+vpn-agent issue --name "Alice MacBook" --endpoint-host 203.0.113.10
 ```
 
 С DNS:
@@ -466,7 +480,7 @@ vpn-agent issue --name "Alice MacBook" --endpoint-host 72.56.69.23
 ```bash
 vpn-agent issue \
   --name "Alice MacBook" \
-  --endpoint-host 72.56.69.23 \
+  --endpoint-host 203.0.113.10 \
   --dns "1.1.1.1,8.8.8.8"
 ```
 
@@ -475,7 +489,7 @@ JSON:
 ```bash
 vpn-agent issue \
   --name "Alice MacBook" \
-  --endpoint-host 72.56.69.23 \
+  --endpoint-host 203.0.113.10 \
   --json
 ```
 
@@ -505,7 +519,7 @@ JSON response:
    - `--endpoint-host` для CLI;
    - `VPN_AGENT_ENDPOINT_HOST`;
    - иначе ошибка.
-3. Берет host lock через `flock`.
+3. Берет host lock через `flock` (non-blocking retry, до 10 секунд; если lock занят - ошибка).
 4. Читает текущее состояние:
    - `awg0.conf`;
    - `clientsTable`;
@@ -524,7 +538,7 @@ JSON response:
    ```
 
 8. Проверяет, что public key не дублируется.
-9. Выделяет первый свободный IPv4 `/32` из subnet server interface.
+9. Выделяет первый свободный IPv4 `/32` из subnet server interface, учитывая peer-ы из config **и** из runtime.
 10. Читает server public key и PSK из файлов рядом с config.
 11. Добавляет `[Peer]` в config.
 12. Добавляет/обновляет запись в `clientsTable`.
@@ -557,7 +571,10 @@ Address = 10.8.1.0/24
 Алгоритм:
 
 - subnet приводится к masked network;
-- используются IPv4 адреса, уже занятые в peer `AllowedIPs`;
+- занятыми считаются:
+  - адрес самого server interface (host-часть `Address`, если она задана);
+  - IPv4 адреса из peer `AllowedIPs` в config;
+  - IPv4 адреса из runtime `awg show` (peer, который есть только в runtime, не потеряет свой адрес);
 - агент идет с первого usable адреса:
   - для `/24`: `10.8.1.1`, `10.8.1.2`, ...
 - network и broadcast пропускаются для обычных subnet размером больше 2 адресов;
@@ -593,7 +610,7 @@ I5 =
 PublicKey = <server-public-key>
 PresharedKey = <psk>
 AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = 72.56.69.23:<listen-port>
+Endpoint = 203.0.113.10:<listen-port>
 PersistentKeepalive = 25
 ```
 
@@ -626,7 +643,7 @@ Root JSON содержит self-hosted user config:
 
 ```json
 {
-  "hostName": "72.56.69.23",
+  "hostName": "203.0.113.10",
   "description": "Alice MacBook",
   "defaultContainer": "amnezia-awg2",
   "dns1": "1.1.1.1",
@@ -652,7 +669,7 @@ Root JSON содержит self-hosted user config:
 ```json
 {
   "config": "[Interface]\n...",
-  "hostName": "72.56.69.23",
+  "hostName": "203.0.113.10",
   "port": 49351,
   "client_ip": "10.8.1.2",
   "client_priv_key": "...",
@@ -759,6 +776,8 @@ Mutating команды `issue` и `revoke` защищены host lock:
 
 Lock нужен, чтобы два процесса агента не выпустили один и тот же IP и не перезаписали изменения друг друга.
 
+Lock берется в non-blocking режиме с retry: если за 10 секунд получить его не удалось, операция завершается ошибкой `lock ... is held by another process`. Это защищает HTTP API от вечно висящих запросов при зависшем держателе lock.
+
 Перед мутацией агент создает backup внутри контейнера:
 
 ```text
@@ -771,7 +790,7 @@ Lock нужен, чтобы два процесса агента не выпус
 Rollback запускается при ошибке после backup:
 
 1. восстановить `awg0.conf`;
-2. восстановить `clientsTable`;
+2. восстановить `clientsTable` (если файла не было до мутации - удалить созданный файл, а не оставлять пустой);
 3. выставить mode `600`;
 4. выполнить `sync`;
 5. выполнить `awg syncconf`.
@@ -819,13 +838,13 @@ PresharedKey = ...
 AllowedIPs = ...
 ```
 
-Поддержка peer fields сейчас ограничена:
+Управляемые peer fields:
 
 - `PublicKey`;
 - `PresharedKey` или `PreSharedKey`;
 - `AllowedIPs`.
 
-Остальные peer fields при parse/render не сохраняются. Это сознательное ограничение MVP: текущий AmneziaWG peer state для server-side config ожидается именно в этом минимальном виде.
+Остальные строки peer-блока (например `PersistentKeepalive`, комментарии, ручные правки) агент не интерпретирует, но сохраняет как есть и выводит обратно после управляемых полей - перезапись config их не теряет.
 
 ## Валидация config
 
@@ -837,7 +856,7 @@ AllowedIPs = ...
 - public keys не дублируются;
 - каждый peer имеет `AllowedIPs`;
 - каждый `AllowedIPs` является валидным prefix;
-- `AllowedIPs` не дублируются между peer-ами.
+- `AllowedIPs` разных peer-ов не пересекаются (не только точные дубликаты: `10.8.1.0/24` у одного peer и `10.8.1.2/32` у другого - тоже ошибка).
 
 ## `clientsTable`
 
@@ -913,6 +932,8 @@ Environment variables:
 | `--allow-ip` | env `VPN_AGENT_ALLOW_IPS` или loopback | comma-separated allowed IPs/CIDRs |
 | `--allow-no-auth` | `false` | разрешить unsigned requests, только если secret пустой |
 
+Пустой allowlist - ошибка запуска: молча разрешить всех нельзя. Если действительно нужен доступ с любых адресов, передай `--allow-ip '0.0.0.0/0,::/0'` явно.
+
 ### Endpoints
 
 | Method | Path | Auth | Описание |
@@ -962,7 +983,7 @@ Request:
 {
   "name": "Alice MacBook",
   "dns": ["1.1.1.1", "8.8.8.8"],
-  "endpoint_host": "72.56.69.23"
+  "endpoint_host": "203.0.113.10"
 }
 ```
 
@@ -1101,6 +1122,10 @@ print("X-Agent-Signature:", signature)
 - TLS/reverse proxy, если запросы идут не по loopback;
 - rate limiting на backend/reverse proxy.
 
+### Replay
+
+Подпись не содержит nonce: перехваченный подписанный запрос можно повторить в пределах timestamp skew (60 секунд). Для `POST /peers` это означает создание дополнительных peer-ов. Митигируется loopback-моделью, IP allowlist и TLS на транспортном уровне; idempotency keys запланированы в backend-интеграции (см. roadmap). Не выноси API за пределы доверенного канала без этого учета.
+
 ### File modes
 
 Агент выставляет:
@@ -1126,14 +1151,14 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/vpn-agent ./cmd/vpn-agent
 ### 2. Copy
 
 ```bash
-scp /tmp/vpn-agent root@72.56.69.23:/tmp/vpn-agent
-ssh root@72.56.69.23 'chmod 0755 /tmp/vpn-agent'
+scp /tmp/vpn-agent root@203.0.113.10:/tmp/vpn-agent
+ssh root@203.0.113.10 'chmod 0755 /tmp/vpn-agent'
 ```
 
 ### 3. Inspect
 
 ```bash
-ssh root@72.56.69.23 '/tmp/vpn-agent inspect'
+ssh root@203.0.113.10 '/tmp/vpn-agent inspect'
 ```
 
 Ожидаем:
@@ -1148,7 +1173,7 @@ ssh root@72.56.69.23 '/tmp/vpn-agent inspect'
 ### 4. Peers
 
 ```bash
-ssh root@72.56.69.23 '/tmp/vpn-agent peers --json'
+ssh root@203.0.113.10 '/tmp/vpn-agent peers --json'
 ```
 
 Проверить, что admin peer:
@@ -1160,8 +1185,8 @@ ssh root@72.56.69.23 '/tmp/vpn-agent peers --json'
 ### 5. Issue test peer
 
 ```bash
-ssh root@72.56.69.23 \
-  '/tmp/vpn-agent issue --name "Codex smoke test" --endpoint-host 72.56.69.23 --json'
+ssh root@203.0.113.10 \
+  '/tmp/vpn-agent issue --name "Codex smoke test" --endpoint-host 203.0.113.10 --json'
 ```
 
 Сохранить `public_key`.
@@ -1169,7 +1194,7 @@ ssh root@72.56.69.23 \
 Проверить:
 
 ```bash
-ssh root@72.56.69.23 '/tmp/vpn-agent peers --json'
+ssh root@203.0.113.10 '/tmp/vpn-agent peers --json'
 ```
 
 Новый peer должен быть:
@@ -1181,14 +1206,14 @@ ssh root@72.56.69.23 '/tmp/vpn-agent peers --json'
 ### 6. Revoke test peer
 
 ```bash
-ssh root@72.56.69.23 \
+ssh root@203.0.113.10 \
   '/tmp/vpn-agent revoke --public-key "<public_key>"'
 ```
 
 Проверить:
 
 ```bash
-ssh root@72.56.69.23 '/tmp/vpn-agent peers --json'
+ssh root@203.0.113.10 '/tmp/vpn-agent peers --json'
 ```
 
 Новый peer должен исчезнуть, admin peer должен остаться.
@@ -1205,7 +1230,7 @@ go test ./...
 Если нужен отдельный cache:
 
 ```bash
-GOCACHE=/private/tmp/vpn-agent-go-build-cache go test ./...
+GOCACHE=$(pwd)/.gocache go test ./...
 ```
 
 Покрытые области:
@@ -1230,7 +1255,7 @@ vpn-agent peers
 ### Выпустить клиента
 
 ```bash
-vpn-agent issue --name "Client name" --endpoint-host 72.56.69.23
+vpn-agent issue --name "Client name" --endpoint-host 203.0.113.10
 ```
 
 Отдать пользователю `vpn_url`.
@@ -1276,7 +1301,8 @@ docker exec amnezia-awg2 sh -lc '
 
 - IPv4 allocation only.
 - Только один server config/interface в рамках вызова.
-- Peer render сохраняет только `PublicKey`, `PresharedKey`, `AllowedIPs`.
+- Управляются только `PublicKey`, `PresharedKey`, `AllowedIPs`; остальные peer-поля сохраняются как есть, но не интерпретируются.
+- HMAC подпись без nonce: replay возможен в пределах timestamp skew.
 - `clientsTable` metadata из HTTP request пока игнорируется.
 - Нет persistent audit log.
 - Нет встроенного HTTP TLS.

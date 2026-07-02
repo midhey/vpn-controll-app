@@ -22,7 +22,7 @@ func TestRenderAmneziaShareURI(t *testing.T) {
 		ClientIP:         netip.MustParseAddr("10.8.1.2"),
 		ServerPublicKey:  "server-public",
 		PresharedKey:     "psk",
-		EndpointHost:     "72.56.69.23",
+		EndpointHost:     "203.0.113.10",
 		DNS:              []string{"1.1.1.1", "8.8.8.8"},
 	})
 	if err != nil {
@@ -30,7 +30,7 @@ func TestRenderAmneziaShareURI(t *testing.T) {
 	}
 
 	uri, err := RenderAmneziaShareURI(cfg, ShareURIParams{
-		EndpointHost:     "72.56.69.23",
+		EndpointHost:     "203.0.113.10",
 		DNS:              []string{"1.1.1.1", "8.8.8.8"},
 		NativeConfig:     nativeConfig,
 		ClientPrivateKey: "client-private",
@@ -51,7 +51,7 @@ func TestRenderAmneziaShareURI(t *testing.T) {
 	if !bytes.Contains(rootJSON, []byte("\"containers\"")) {
 		t.Fatalf("decoded config does not contain containers: %s", rootJSON)
 	}
-	if root["hostName"] != "72.56.69.23" {
+	if root["hostName"] != "203.0.113.10" {
 		t.Fatalf("hostName = %v", root["hostName"])
 	}
 	if root["defaultContainer"] != "amnezia-awg2" {

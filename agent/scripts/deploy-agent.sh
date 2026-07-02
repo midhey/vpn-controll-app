@@ -96,15 +96,15 @@ Other:
   -h, --help                  Show this help
 
 Examples:
-  $SCRIPT_NAME --user root --host 72.56.69.23
+  $SCRIPT_NAME --user root --host 203.0.113.10
 
-  $SCRIPT_NAME --user root --host 72.56.69.23 --ask-password
+  $SCRIPT_NAME --user root --host 203.0.113.10 --ask-password
 
-  $SCRIPT_NAME --user ubuntu --host 72.56.69.23 --identity-file ~/.ssh/id_ed25519 --sudo
+  $SCRIPT_NAME --user ubuntu --host 203.0.113.10 --identity-file ~/.ssh/id_ed25519 --sudo
 
-  $SCRIPT_NAME --user root --host 72.56.69.23 \\
+  $SCRIPT_NAME --user root --host 203.0.113.10 \\
     --install-service \\
-    --endpoint-host 72.56.69.23 \\
+    --endpoint-host 203.0.113.10 \\
     --hmac-key-id backend \\
     --hmac-secret 'change-me'
 USAGE
