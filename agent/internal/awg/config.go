@@ -20,6 +20,10 @@ type Peer struct {
 	PublicKey    string
 	PresharedKey string
 	AllowedIPs   []string
+	// Extra holds raw peer lines the agent does not manage (for example
+	// PersistentKeepalive or comments), preserved verbatim across
+	// parse/render so a rewrite never silently drops them.
+	Extra []string
 }
 
 type Config struct {
@@ -72,11 +76,16 @@ func ParseConfig(input string) (*Config, error) {
 				HasKV:     ok,
 			})
 		case "peer":
-			if current == nil || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			if current == nil || trimmed == "" {
+				continue
+			}
+			if strings.HasPrefix(trimmed, "#") {
+				current.Extra = append(current.Extra, trimmed)
 				continue
 			}
 			key, value, _, ok := parseAssignment(line)
 			if !ok {
+				current.Extra = append(current.Extra, trimmed)
 				continue
 			}
 			switch key {
@@ -86,6 +95,8 @@ func ParseConfig(input string) (*Config, error) {
 				current.PresharedKey = value
 			case "AllowedIPs":
 				current.AllowedIPs = splitCSV(value)
+			default:
+				current.Extra = append(current.Extra, trimmed)
 			}
 		default:
 			if trimmed != "" {
@@ -247,7 +258,12 @@ func RenderConfig(cfg *Config) string {
 		}
 		b.WriteString("AllowedIPs = ")
 		b.WriteString(strings.Join(peer.AllowedIPs, ", "))
-		b.WriteString("\n\n")
+		b.WriteByte('\n')
+		for _, extra := range peer.Extra {
+			b.WriteString(extra)
+			b.WriteByte('\n')
+		}
+		b.WriteByte('\n')
 	}
 	return b.String()
 }

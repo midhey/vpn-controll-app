@@ -64,6 +64,40 @@ func TestParseRenderRoundTripPreservesInterfaceAndPeers(t *testing.T) {
 	}
 }
 
+func TestParseRenderPreservesUnknownPeerLines(t *testing.T) {
+	config := strings.Replace(sampleConfig,
+		"PublicKey = peer-one",
+		"PublicKey = peer-one\nPersistentKeepalive = 25\n# managed by hand",
+		1)
+	cfg, err := ParseConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer, ok := cfg.FindPeer("peer-one")
+	if !ok {
+		t.Fatal("peer-one not found")
+	}
+	if got, want := len(peer.Extra), 2; got != want {
+		t.Fatalf("extra lines = %#v, want %d entries", peer.Extra, want)
+	}
+
+	rendered := RenderConfig(cfg)
+	if !strings.Contains(rendered, "PersistentKeepalive = 25") {
+		t.Fatalf("rendered config lost PersistentKeepalive:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "# managed by hand") {
+		t.Fatalf("rendered config lost peer comment:\n%s", rendered)
+	}
+
+	reparsed, err := ParseConfig(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if RenderConfig(reparsed) != rendered {
+		t.Fatal("render is not stable across parse/render cycles")
+	}
+}
+
 func TestAddRemovePeer(t *testing.T) {
 	cfg, err := ParseConfig(sampleConfig)
 	if err != nil {
