@@ -1,0 +1,32 @@
+[project]
+name = "vpn-control-backend"
+version = "0.1.0"
+description = "Control-plane backend for Подсос VPN (FastAPI, in-memory skeleton)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+# Подключаются на этапе интеграции БД и прод-хардининга
+# (см. ../backend-fastapi-plan-for-claude.md):
+#   sqlalchemy[asyncio], asyncpg, alembic — хранилище вместо app/storage/memory.py
+#   argon2-cffi — вместо PBKDF2 в app/core/security.py
+#   cryptography (Fernet) — вместо PlaintextSecretBox в app/core/security.py
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
