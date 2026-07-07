@@ -10,7 +10,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request
@@ -38,6 +38,7 @@ from app.core.security import (
     SecretBox,
     generate_password,
 )
+from app.db.session import Database
 from app.domain.models import User, UserRole
 from app.services.agent_client import (
     AgentClient,
@@ -52,6 +53,7 @@ from app.services.server_service import ServerService
 from app.services.setup_job_service import SetupJobService
 from app.services.support_service import SupportService
 from app.services.user_service import UserService
+from app.storage.db import DatabaseStorage
 from app.storage.memory import InMemoryStorage
 from app.workers.setup_worker import SetupWorker, StubSetupRunner
 
@@ -62,14 +64,15 @@ UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass(slots=True)
 class Container:
     settings: Settings
     clock: Any
-    storage: InMemoryStorage
+    storage: Any
+    database: Database | None
     password_hasher: PasswordHasher
     secret_box: SecretBox
     agent_transport: AgentTransport
@@ -86,7 +89,8 @@ class Container:
 
 def build_container(settings: Settings) -> Container:
     clock = utc_now
-    storage = InMemoryStorage()
+    database = Database(settings.database_url) if settings.database_url else None
+    storage = DatabaseStorage(database) if database else InMemoryStorage()
     password_hasher = PasswordHasher()
     secret_box = PlaintextSecretBox()
     transport: AgentTransport
@@ -110,6 +114,7 @@ def build_container(settings: Settings) -> Container:
         settings=settings,
         clock=clock,
         storage=storage,
+        database=database,
         password_hasher=password_hasher,
         secret_box=secret_box,
         agent_transport=transport,
@@ -173,6 +178,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             container.setup_worker.start()
         yield
         await container.setup_worker.stop()
+        if container.database is not None:
+            container.database.close()
 
     app = FastAPI(
         title="Подсос VPN API",

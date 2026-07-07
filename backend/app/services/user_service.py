@@ -107,6 +107,7 @@ class UserService:
                 changed.append(field_name)
         if changed:
             user.updated_at = self._clock()
+            self._storage.save_user(user)
             self._audit.log(
                 "user_updated",
                 actor_user_id=actor.id,
@@ -120,6 +121,7 @@ class UserService:
         user = self.get(user_id)
         user.password_hash = self._hasher.hash(new_password)
         user.updated_at = self._clock()
+        self._storage.save_user(user)
         # Пароль сменился — старые сессии больше не доверяем.
         self._storage.revoke_sessions_for_user(user.id, self._clock())
         self._audit.log(
@@ -136,6 +138,7 @@ class UserService:
         if user.is_active != is_active:
             user.is_active = is_active
             user.updated_at = self._clock()
+            self._storage.save_user(user)
             if not is_active:
                 self._storage.revoke_sessions_for_user(user.id, self._clock())
             self._audit.log(

@@ -90,6 +90,7 @@ class AuthService:
         if user is None or not user.is_active:
             return None
         session.last_seen_at = now
+        self._storage.save_session(session)
         return user
 
     def logout(self, raw_token: str, *, ip: str | None, user_agent: str | None) -> None:
@@ -97,6 +98,7 @@ class AuthService:
         if session is None or session.revoked_at is not None:
             return
         session.revoked_at = self._clock()
+        self._storage.save_session(session)
         self._audit.log(
             "logout", actor_user_id=session.user_id, ip_address=ip, user_agent=user_agent
         )

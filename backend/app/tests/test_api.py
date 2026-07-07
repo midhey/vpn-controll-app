@@ -37,7 +37,7 @@ def test_login_logout_session(client):
 
 
 def test_login_wrong_password_and_rate_limit(client):
-    for attempt in range(5):
+    for _attempt in range(5):
         response = client.post(
             "/api/v1/auth/login", json={"login": ADMIN_LOGIN, "password": "wrong"}
         )

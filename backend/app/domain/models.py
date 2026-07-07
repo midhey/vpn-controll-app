@@ -9,23 +9,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     ADMIN = "admin"
     USER = "user"
 
 
-class DeviceStatus(str, Enum):
+class DeviceStatus(StrEnum):
     PROVISIONING = "provisioning"
     ACTIVE = "active"
     REVOKED = "revoked"
     FAILED = "failed"
 
 
-class ServerStatus(str, Enum):
+class ServerStatus(StrEnum):
     DRAFT = "draft"
     SETUP_PENDING = "setup_pending"
     SETUP_RUNNING = "setup_running"
@@ -36,7 +36,7 @@ class ServerStatus(str, Enum):
     SETUP_FAILED = "setup_failed"
 
 
-class SetupJobStatus(str, Enum):
+class SetupJobStatus(StrEnum):
     DRAFT = "draft"
     QUEUED = "queued"
     CHECKING_SSH = "checking_ssh"
@@ -52,12 +52,12 @@ class SetupJobStatus(str, Enum):
         return self in {self.SUCCESS, self.FAILED, self.CANCELLED}
 
 
-class AuthMethod(str, Enum):
+class AuthMethod(StrEnum):
     SSH_KEY = "ssh_key"
     PASSWORD = "password"
 
 
-class EventLevel(str, Enum):
+class EventLevel(StrEnum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"

@@ -42,13 +42,13 @@ class SupportService:
         self._clock = clock
 
     def visible_for(self, user: User) -> bool:
-        settings = self._storage.support_settings
+        settings = self._storage.get_support_settings()
         return settings.is_enabled and user.show_server_support and not user.free_access
 
     def view_for(self, user: User) -> dict[str, Any]:
         if not self.visible_for(user):
             return {"visible": False}
-        settings = self._storage.support_settings
+        settings = self._storage.get_support_settings()
         return {
             "visible": True,
             "title": settings.title,
@@ -103,10 +103,10 @@ class SupportService:
         return contribution
 
     def get_settings(self) -> SupportSettings:
-        return self._storage.support_settings
+        return self._storage.get_support_settings()
 
     def update_settings(self, actor: User, patch: dict[str, Any]) -> SupportSettings:
-        settings = self._storage.support_settings
+        settings = self._storage.get_support_settings()
         changed = []
         for field_name, value in patch.items():
             if field_name not in _SETTINGS_PATCHABLE:
@@ -117,6 +117,7 @@ class SupportService:
         if changed:
             settings.updated_by_user_id = actor.id
             settings.updated_at = self._clock()
+            self._storage.save_support_settings(settings)
             self._audit.log(
                 "support_settings_updated",
                 actor_user_id=actor.id,

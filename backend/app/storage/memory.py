@@ -48,6 +48,9 @@ class InMemoryStorage:
     def add_user(self, user: User) -> None:
         self._users[user.id] = user
 
+    def save_user(self, user: User) -> None:
+        self._users[user.id] = user
+
     def get_user(self, user_id: str) -> User | None:
         return self._users.get(user_id)
 
@@ -69,6 +72,9 @@ class InMemoryStorage:
     def add_session(self, session: Session) -> None:
         self._sessions[session.token_hash] = session
 
+    def save_session(self, session: Session) -> None:
+        self._sessions[session.token_hash] = session
+
     def get_session_by_token_hash(self, token_hash: str) -> Session | None:
         return self._sessions.get(token_hash)
 
@@ -82,6 +88,9 @@ class InMemoryStorage:
     def add_server_node(self, node: ServerNode) -> None:
         self._server_nodes[node.id] = node
 
+    def save_server_node(self, node: ServerNode) -> None:
+        self._server_nodes[node.id] = node
+
     def get_server_node(self, node_id: str) -> ServerNode | None:
         return self._server_nodes.get(node_id)
 
@@ -91,6 +100,9 @@ class InMemoryStorage:
     # --- devices ---
 
     def add_device(self, device: Device) -> None:
+        self._devices[device.id] = device
+
+    def save_device(self, device: Device) -> None:
         self._devices[device.id] = device
 
     def get_device(self, device_id: str) -> Device | None:
@@ -125,6 +137,9 @@ class InMemoryStorage:
     def set_issue(self, issue: DeviceConfigIssue) -> None:
         self._issues[issue.device_id] = issue
 
+    def save_issue(self, issue: DeviceConfigIssue) -> None:
+        self._issues[issue.device_id] = issue
+
     def get_issue(self, device_id: str) -> DeviceConfigIssue | None:
         return self._issues.get(device_id)
 
@@ -136,6 +151,12 @@ class InMemoryStorage:
     def add_contribution(self, contribution: SupportContribution) -> None:
         self._contributions.append(contribution)
 
+    def get_support_settings(self) -> SupportSettings:
+        return self.support_settings
+
+    def save_support_settings(self, settings: SupportSettings) -> None:
+        self.support_settings = settings
+
     def list_contributions_for_user(self, user_id: str) -> list[SupportContribution]:
         return sorted(
             (c for c in self._contributions if c.user_id == user_id),
@@ -146,6 +167,10 @@ class InMemoryStorage:
     # --- setup jobs ---
 
     def add_setup_job(self, job: SetupJob) -> None:
+        self._setup_jobs[job.id] = job
+        self._setup_events.setdefault(job.id, [])
+
+    def save_setup_job(self, job: SetupJob) -> None:
         self._setup_jobs[job.id] = job
         self._setup_events.setdefault(job.id, [])
 

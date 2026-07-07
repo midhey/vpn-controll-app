@@ -1,37 +1,53 @@
-# Подсос VPN — backend (скелет)
+# Подсос VPN — backend
 
-FastAPI-бэкенд поверх Go-агента из `../agent`. Это рабочий скелет **без базы данных**:
-всё состояние живёт в памяти процесса и пропадает при перезапуске. Логика продукта
-(роли, лимиты, выпуск/отзыв конфигов, поддержка сервера, setup-джобы, аудит) уже
-работает; инфраструктурные части заменяются позже без переписывания сервисов.
+FastAPI-бэкенд поверх Go-агента из `../agent`. Если `DATABASE_URL` или
+`DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` не заданы, backend работает в
+in-memory режиме для локального smoke-теста. Если данные БД заданы, используется
+PostgreSQL + SQLAlchemy + Alembic.
 
 Полное ТЗ: [`../backend-fastapi-plan-for-claude.md`](../backend-fastapi-plan-for-claude.md).
 
 ## Запуск
 
-Нужен Python 3.11+ (прод-цель — 3.12).
+Нужен Python 3.11+ (прод-цель — 3.12). Через `uv`:
 
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate          # Windows; на Linux: source .venv/bin/activate
-pip install -e . --group dev    # или: pip install fastapi "uvicorn[standard]" httpx pytest
-uvicorn app.main:app --reload
+uv sync --group dev
+cp .env.example .env            # файл уже в .gitignore
+# Заполни DB_HOST/DB_NAME/DB_USER/DB_PASSWORD или DATABASE_URL.
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload
 ```
 
 Swagger: <http://127.0.0.1:8000/api/docs>.
 
 При первом старте создаётся админ `FIRST_ADMIN_LOGIN` (по умолчанию `midhey`).
 Если `FIRST_ADMIN_PASSWORD` не задан — пароль генерируется и печатается в лог.
-Переменные окружения — в [.env.example](.env.example) (все опциональны).
+Переменные окружения — в [.env.example](.env.example). Для PostgreSQL можно
+задать одну строку:
 
-Тесты: `pytest` (агент и установка — фейки, сеть не нужна).
+```dotenv
+DATABASE_URL=postgresql://vpn_user:password@db-host:5432/vpn_control
+```
+
+Или раздельные поля:
+
+```dotenv
+DB_HOST=db-host
+DB_PORT=5432
+DB_NAME=vpn_control
+DB_USER=vpn_user
+DB_PASSWORD=password
+```
+
+Тесты: `uv run pytest` (агент и установка — фейки, сеть не нужна).
 
 ## Что настоящее, а что заглушка
 
 | Часть | Сейчас | На интеграции |
 |---|---|---|
-| Хранилище | in-memory (`app/storage/memory.py`) | PostgreSQL + SQLAlchemy + Alembic, тот же интерфейс методов |
+| Хранилище | PostgreSQL при заданной БД; иначе in-memory fallback | боевой backup/monitoring БД |
 | Пароли | PBKDF2 (stdlib) | argon2id (`argon2-cffi`), формат хеша самоописываемый |
 | Шифрование секретов | `PlaintextSecretBox` (base64-пометка, не защита) | Fernet (`cryptography`) c `ENCRYPTION_KEY` |
 | Агент | `FakeAgentTransport` — имитация узла на каждый URL | `HttpxAgentTransport` уже написан (`AGENT_MODE=http`) |

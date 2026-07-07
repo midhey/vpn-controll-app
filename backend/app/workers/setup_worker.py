@@ -126,8 +126,9 @@ class SetupWorker:
             )
             checked = await self._servers.health_check(node.id)
             if checked.status.value not in {"online", "warning"}:
+                last_error = checked.last_error or "нет ответа"
                 raise SetupStepError(
-                    f"Узел установлен, но health-check не прошёл: {checked.last_error or 'нет ответа'}"
+                    f"Узел установлен, но health-check не прошёл: {last_error}"
                 )
             self._jobs.finish_success(job, node.id)
         except SetupStepError as exc:

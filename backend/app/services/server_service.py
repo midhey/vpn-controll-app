@@ -171,6 +171,7 @@ class ServerService:
                 changed.append(field_name)
         if changed:
             node.updated_at = self._clock()
+            self._storage.save_server_node(node)
             self._audit.log(
                 "server_updated",
                 actor_user_id=actor.id,
@@ -189,6 +190,7 @@ class ServerService:
             # После включения статус неизвестен до health-check.
             node.status = ServerStatus.DRAFT
         node.updated_at = now
+        self._storage.save_server_node(node)
         self._audit.log(
             "server_disabled" if disabled else "server_enabled",
             actor_user_id=actor.id,
@@ -213,6 +215,7 @@ class ServerService:
                 node.status = ServerStatus.OFFLINE
             node.last_error = exc.message
             node.updated_at = now
+            self._storage.save_server_node(node)
             self._audit.log(
                 "agent_call_failed",
                 actor_user_id=actor_user_id,
@@ -232,6 +235,7 @@ class ServerService:
                 ServerStatus.ONLINE if running and not warnings else ServerStatus.WARNING
             )
         node.updated_at = now
+        self._storage.save_server_node(node)
         if node.status != previous_status:
             self._audit.log(
                 "server_status_changed",

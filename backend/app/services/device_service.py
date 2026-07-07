@@ -102,6 +102,7 @@ class DeviceService:
                 device.status = DeviceStatus.FAILED
                 device.failure_message = exc.message
                 device.updated_at = self._clock()
+                self._storage.save_device(device)
                 self._audit.log(
                     "device_issue_failed",
                     actor_user_id=user.id,
@@ -119,6 +120,7 @@ class DeviceService:
             device.status = DeviceStatus.ACTIVE
             device.last_config_issued_at = now
             device.updated_at = now
+            self._storage.save_device(device)
             issue = DeviceConfigIssue(
                 id=str(uuid.uuid4()),
                 device_id=device.id,
@@ -170,6 +172,7 @@ class DeviceService:
             device.status = DeviceStatus.REVOKED
             device.revoked_at = now
             device.updated_at = now
+            self._storage.save_device(device)
             self._storage.drop_issue(device.id)
             self._audit.log(
                 "device_revoked",
@@ -197,6 +200,7 @@ class DeviceService:
             )
         if issue.consumed_at is None:
             issue.consumed_at = now  # только аудит, повторные чтения разрешены
+            self._storage.save_issue(issue)
         return {
             "device_id": device.id,
             "config": self._secret_box.decrypt(issue.config_encrypted),

@@ -128,6 +128,7 @@ class SetupJobService:
             job.status = SetupJobStatus.QUEUED
             job.current_step = STEP_LABELS[SetupJobStatus.QUEUED]
             job.updated_at = self._clock()
+            self._storage.save_setup_job(job)
             self.add_event(job, EventLevel.INFO, "queued", "Задача поставлена в очередь")
         return job
 
@@ -143,6 +144,7 @@ class SetupJobService:
         job.finished_at = now
         job.updated_at = now
         job.secret_encrypted = None
+        self._storage.save_setup_job(job)
         self.add_event(job, EventLevel.WARNING, "cancelled", "Задача отменена")
         self._audit.log(
             "setup_job_cancelled",
@@ -158,6 +160,7 @@ class SetupJobService:
         job = self._storage.next_queued_setup_job()
         if job is not None:
             job.started_at = self._clock()
+            self._storage.save_setup_job(job)
         return job
 
     def is_cancelled(self, job_id: str) -> bool:
@@ -168,6 +171,7 @@ class SetupJobService:
         job.status = status
         job.current_step = STEP_LABELS[status]
         job.updated_at = self._clock()
+        self._storage.save_setup_job(job)
         self.add_event(job, EventLevel.INFO, status.value, message)
 
     def add_event(
@@ -199,6 +203,7 @@ class SetupJobService:
         job.updated_at = now
         job.secret_encrypted = None
         job.result_payload = {"server_node_id": server_node_id}
+        self._storage.save_setup_job(job)
         self.add_event(job, EventLevel.INFO, "success", "Узел установлен и подключён")
         self._audit.log(
             "setup_job_succeeded",
@@ -215,6 +220,7 @@ class SetupJobService:
         job.finished_at = now
         job.updated_at = now
         job.secret_encrypted = None
+        self._storage.save_setup_job(job)
         self.add_event(job, EventLevel.ERROR, "failed", error_message)
         self._audit.log(
             "setup_job_failed",

@@ -25,7 +25,7 @@ import hmac
 import json
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.parse import quote, unquote
 
@@ -41,7 +41,7 @@ SKEW_MESSAGE = "timestamp outside allowed skew"
 
 
 def rfc3339_utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def sign_agent_request(
@@ -303,7 +303,7 @@ class FakeAgentTransport:
             f"Endpoint = {endpoint_host}:51820\n"
         )
         vpn_url = "vpn://" + base64.urlsafe_b64encode(
-            f"fake:{public_key}:{client_ip}".encode("utf-8")
+            f"fake:{public_key}:{client_ip}".encode()
         ).decode("ascii").rstrip("=")
         return AgentResponse(
             201,
