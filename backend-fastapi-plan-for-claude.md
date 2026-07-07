@@ -76,6 +76,13 @@ backend/
 
 Use FastAPI with `APIRouter` modules, Pydantic request/response schemas, dependencies for auth/role checks, SQLAlchemy 2 async, Alembic, PostgreSQL, and `httpx.AsyncClient` for agent calls.
 
+Tooling decisions:
+
+- Python 3.12+, `uv` for dependency management (`uv.lock` committed).
+- `ruff` for lint and format.
+- `pytest` + `pytest-asyncio`; API tests via `httpx.ASGITransport` against the app; agent calls always faked.
+- `argon2-cffi` for password hashing, `cryptography` (Fernet) for secret encryption at rest.
+
 ## Existing Go Agent Contract
 
 The backend talks to the agent over HTTP.
@@ -92,14 +99,28 @@ agent/README.md
 Agent endpoints:
 
 ```text
-GET    /health               no auth
-GET    /status               HMAC auth
-GET    /peers                HMAC auth
-POST   /peers                HMAC auth
-DELETE /peers/{public_key}   HMAC auth
+GET    /health               no auth     -> 200
+GET    /status               HMAC auth   -> 200
+GET    /peers                HMAC auth   -> 200
+POST   /peers                HMAC auth   -> 201 Created
+DELETE /peers/{public_key}   HMAC auth   -> 200
 ```
 
 Agent version currently returned by `/health`: `0.2.0`.
+
+Contract facts the backend must respect:
+
+- Signed endpoints cap the request body at 1 MiB.
+- The agent decodes JSON with `DisallowUnknownFields`: any field other than the documented ones (or trailing JSON data) is a 400. `AgentClient` must serialize exactly the documented fields and nothing else.
+- Agent errors always have this shape; parse it when mapping to domain errors:
+
+```json
+{
+  "error": "invalid signature",
+  "status": 401,
+  "status_text": "Unauthorized"
+}
+```
 
 ### Agent Auth
 
@@ -121,7 +142,13 @@ signature = hex(hmac_sha256(secret, payload))
 
 Backend must implement this exactly in `services/agent_client.py`.
 
-Agent also enforces IP allowlist. In production, either expose the agent only through a private network/VPN or configure allowlist for the backend host.
+Signing details that are easy to get wrong:
+
+- `timestamp_rfc3339` is current UTC time in RFC3339. The agent rejects requests when `|agent_now - timestamp| > 60s` (default skew, not changed by the deploy script) with 401 `timestamp outside allowed skew`. Keep backend/VPS clocks NTP-synced and surface this specific 401 as a distinct, diagnosable error.
+- `escaped_path_with_query` is the percent-encoded path exactly as sent on the wire (the agent verifies against Go `EscapedPath()` plus raw query). Compute the signature over the same encoded string `httpx` actually sends; never sign a decoded path.
+- WireGuard public keys are standard base64 and may contain `+`, `/`, `=`. For `DELETE /peers/{public_key}` the key must be percent-encoded as a single path segment (`quote(key, safe="")`, so `/` -> `%2F`) and the signature computed over that encoded form.
+
+Agent also enforces an IP allowlist and refuses to start when the allowlist is empty; the deploy default is `127.0.0.1,::1`. In production, either expose the agent only through a private network/VPN or combine a non-loopback `--listen` with a strict `--allow-ip` for the backend host (see setup worker section).
 
 ### Agent POST /peers
 
@@ -138,9 +165,11 @@ Request:
 }
 ```
 
-Current Go implementation reads `name`, `dns`, and `endpoint_host`. `metadata` is accepted by HTTP shape but not persisted by the agent.
+Current Go implementation reads `name`, `dns`, and `endpoint_host`. `metadata` is accepted by HTTP shape but not persisted by the agent, so reconciliation must key on `public_key` only; sending `backend_device_id` in `metadata` is still fine as forward compatibility.
 
-Response:
+`dns` is optional: when empty the agent falls back to `1.1.1.1`, `8.8.8.8`. Allowed fields are exactly `name`, `dns`, `endpoint_host`, `metadata` — anything else is a 400 (`DisallowUnknownFields`).
+
+Success response is `201 Created`:
 
 ```json
 {
@@ -155,6 +184,8 @@ Important security note: the agent returns the generated client config and `vpn_
 
 ### Agent DELETE /peers/{public_key}
 
+`public_key` must be percent-encoded as a single path segment (base64 keys contain `+`, `/`, `=`); the HMAC signature is computed over the encoded path.
+
 Response:
 
 ```json
@@ -166,27 +197,60 @@ Response:
 
 ### Agent GET /status
 
-Returns diagnostics:
+Returns diagnostics (`InspectResult` from `agent/internal/agent/service.go`):
 
-- container
-- container_running
-- runtime_interface
-- listen_port
-- config path/mode/size
-- peer counts
-- warnings
+```json
+{
+  "container": "amnezia-awg2",
+  "container_running": true,
+  "container_image": "...",
+  "container_created": "...",
+  "interface": "awg0",
+  "runtime_interface": "awg0",
+  "runtime_public_key": "...",
+  "listen_port": "...",
+  "config_path": "/opt/amnezia/awg/awg0.conf",
+  "config_exists": true,
+  "config_mode": "...",
+  "config_size": 4096,
+  "clients_table_path": "/opt/amnezia/awg/clientsTable",
+  "clients_table_mode": "...",
+  "peer_count_config": 3,
+  "peer_count_runtime": 3,
+  "warnings": []
+}
+```
 
-The backend should cache/display this as server health.
+`config_mode`, `config_size`, `clients_table_mode`, and `warnings` are omitted when empty.
+
+The backend stores the whole payload in `server_nodes.last_status_payload` and derives `status`/`last_error` from `container_running`, config/runtime peer count mismatch, and `warnings`.
 
 ### Agent GET /peers
 
-Returns merged peer info from:
+Returns merged peer info from `awg0.conf`, runtime `awg show`, and `clientsTable`:
 
-- `awg0.conf`
-- runtime `awg show`
-- `clientsTable`
+```json
+[
+  {
+    "public_key": "...",
+    "name": "Alice iPhone",
+    "allowed_ips_config": ["10.8.1.2/32"],
+    "allowed_ips_runtime": ["10.8.1.2/32"],
+    "in_config": true,
+    "in_runtime": true,
+    "in_clients_table": true,
+    "endpoint": "198.51.100.7:54321",
+    "latest_handshake": "1 minute, 3 seconds ago",
+    "transfer_received": "1.2 MiB",
+    "transfer_sent": "3.4 MiB",
+    "user_data": {}
+  }
+]
+```
 
-Use it for reconciliation and status, not as the source of product truth.
+`latest_handshake` and `transfer_*` are human-readable labels taken verbatim from `awg show` output, not machine timestamps — store them as labels (this is why `devices` uses `transfer_received_label`/`transfer_sent_label`; populate `last_handshake_at` only as best-effort parsing, nullable). Optional fields are omitted when empty.
+
+Use it for reconciliation and device status sync keyed on `public_key`, not as the source of product truth.
 
 ## Backend Responsibilities
 
@@ -247,7 +311,7 @@ Do not build public registration.
 Login options for MVP:
 
 - username/login + password
-- admin creates initial user via seed/env/bootstrap command
+- first admin is created by an idempotent bootstrap step (CLI command or startup hook) that reads `FIRST_ADMIN_LOGIN`/`FIRST_ADMIN_PASSWORD` and creates the admin only when no admin exists yet
 
 Session model:
 
@@ -269,6 +333,8 @@ Every table should have:
 
 - `created_at`
 - `updated_at` where mutable
+
+All timestamps are `timestamptz` stored in UTC. Money amounts (`support_contributions.amount`, `monthly_cost_amount`, `reserve_amount`) are `numeric(10, 2)`.
 
 Use enums where appropriate, but keep migrations manageable.
 
@@ -341,6 +407,8 @@ Fields:
 - `created_at`
 - `updated_at`
 
+Note: the `awg_*` and `clients_table_path` fields are deploy-time/informational metadata. The running agent reads its own settings from `/etc/vpn-agent/vpn-agent.env` on the node and does not accept them over HTTP; editing them in the backend does not reconfigure the node.
+
 ### devices
 
 Represents a user's issued VPN config/device.
@@ -381,7 +449,7 @@ Fields:
 - `consumed_at` nullable
 - `created_at`
 
-MVP option: store encrypted config for a short TTL such as 15 minutes so the frontend can show QR/download after creation. After TTL, config is not available; user must regenerate/reissue.
+Decision for MVP: store `config`/`vpn_url` encrypted (Fernet with `ENCRYPTION_KEY`) with TTL from `ISSUE_RESULT_TTL_MINUTES` (default 15). The issue result may be read multiple times until `expires_at` — the same result backs the QR screen, copy, and download actions without re-provisioning. `consumed_at` records the first read for audit and does not block re-reads. After expiry the endpoint returns 404 with code `issue_result_expired`; the user must issue a new device config. Expired rows have their payload nulled/purged by periodic cleanup or lazily on access.
 
 ### support_contributions
 
@@ -436,7 +504,7 @@ Fields:
 - `ssh_port`
 - `ssh_username`
 - `auth_method`: `ssh_key | password`
-- `secret_ref` nullable, never store raw secret in plaintext
+- `secret_encrypted` nullable — SSH key/password encrypted with `ENCRYPTION_KEY`; cleared once the job reaches a terminal status; never stored or logged in plaintext
 - `region_note`
 - `install_awg` boolean
 - `available_for_new_devices` boolean
@@ -611,8 +679,9 @@ Failure:
 `GET /devices/{device_id}/issue-result`:
 
 - only owner or admin
-- returns config/vpn_url only while issue result is unexpired
-- mark `consumed_at` if desired
+- returns config/vpn_url while the issue result is unexpired; repeat reads within TTL are allowed
+- sets `consumed_at` on first read (audit only, does not block re-reads)
+- after `expires_at` returns 404 with code `issue_result_expired`
 
 Response:
 
@@ -817,12 +886,13 @@ failed
 Backend worker responsibilities:
 
 1. validate SSH connection
-2. run or orchestrate `agent/scripts/deploy-agent.sh`
-3. install systemd service with HMAC auth
-4. create/update `server_nodes`
-5. call agent `/health`
-6. call signed `/status`
-7. mark server online or setup_failed
+2. generate per-node credentials: `agent_key_id` (e.g. `backend-prod`) and a random secret of at least 32 bytes
+3. run or orchestrate `agent/scripts/deploy-agent.sh` with explicit `--listen`, `--allow-ip`, `--endpoint-host`, `--hmac-key-id`, `--hmac-secret`
+4. install systemd service with HMAC auth
+5. create/update `server_nodes` (agent base URL derived from the `--listen` address/private network, secret stored encrypted)
+6. call agent `/health`
+7. call signed `/status`
+8. mark server online or setup_failed; clear the stored SSH secret in both cases
 
 For first backend MVP, it is acceptable to implement this as a stubbed worker that simulates the steps and creates a draft/online server row. Keep the service interface ready for the real script.
 
@@ -845,8 +915,15 @@ Script supports:
 - `--hmac-key-id`
 - `--hmac-secret`
 - `--allow-ip`
+- `--listen`
+- `--allow-no-auth`
 
-Backend should not use interactive flags. It must pass non-interactive inputs from encrypted secret handling.
+Backend must not use interactive flags (`--ask-password`) and must never use `--allow-no-auth`; it passes non-interactive inputs from encrypted secret handling.
+
+Facts about the installed service the worker relies on:
+
+- systemd unit name is `vpn-agent`; agent settings including the HMAC secret are written to root-only `/etc/vpn-agent/vpn-agent.env` and injected via `EnvironmentFile=` — the secret never appears in `ExecStart` or the process list.
+- script defaults are `--listen 127.0.0.1:8090` and `--allow-ip 127.0.0.1,::1`: keeping them installs an agent the backend cannot reach. The worker must pass an explicit `--listen` (private/management address) and `--allow-ip` (backend address/CIDR, from `SETUP_BACKEND_ALLOW_IP`).
 
 ## Agent Client Service
 
@@ -863,11 +940,13 @@ revoke_peer(server_node, public_key) -> AgentRevokeResult
 Requirements:
 
 - use `httpx.AsyncClient`
-- short timeouts, e.g. connect 3s/read 15s for status, longer for issue/revoke if needed
-- HMAC sign signed endpoints
+- timeouts: connect 3s; read 15s for health/status/peers; read 30s for issue/revoke (they run docker exec plus config sync on the node)
+- HMAC sign signed endpoints with current UTC RFC3339 timestamp; sign the exact percent-encoded path+query that httpx sends
+- percent-encode `public_key` as a single path segment in `DELETE /peers/{public_key}` (`quote(key, safe="")`)
+- treat `201` as the success status for `POST /peers`
 - never log `agent_secret`
-- map agent errors to domain errors
-- store raw agent response in audit only after redacting sensitive fields
+- parse the agent error shape (`{"error", "status", "status_text"}`) and map to domain errors: network error/timeout/5xx -> `agent_unavailable`; 400/401/403/404/409 -> `agent_rejected` with the agent message preserved for admin diagnostics; surface the 401 skew case (`timestamp outside allowed skew`) explicitly
+- store raw agent response in audit only after redacting sensitive fields; `config` and `vpn_url` are secrets and must never reach logs or audit
 
 ## Backend Service Rules
 
@@ -962,9 +1041,11 @@ Common codes:
 
 - `unauthorized`
 - `forbidden`
+- `csrf_failed`
 - `not_found`
 - `validation_error`
 - `device_limit_reached`
+- `issue_result_expired`
 - `server_unavailable`
 - `agent_unavailable`
 - `agent_rejected`
@@ -973,13 +1054,13 @@ Common codes:
 
 ## Security Requirements
 
-- HttpOnly cookies for user sessions.
-- CSRF protection if cookie auth is used for unsafe methods.
-- Password hashes only.
-- Encrypt agent secrets and setup SSH secrets.
-- Redact secrets from logs.
-- Do not store raw VPN client private config permanently by default.
-- Rate-limit login.
+- HttpOnly cookies for user sessions: `SameSite=Lax`, `Secure` outside local dev.
+- CSRF: strict CORS allowlist from `CORS_ORIGINS`; on unsafe methods require a custom header (e.g. `X-Requested-With: XMLHttpRequest`) and validate `Origin` against the allowlist when present. The custom header forces a CORS preflight that cross-site forms cannot pass. Reject with 403 code `csrf_failed`.
+- Passwords: argon2id via `argon2-cffi`; hashes only; never log passwords.
+- Secret encryption at rest: Fernet from `cryptography`, key = `ENCRYPTION_KEY` (urlsafe base64, 32 bytes). Applies to `server_nodes.agent_secret_encrypted`, setup job SSH secrets, and `device_config_issues` payloads. Key rotation is out of MVP scope, but keep all encryption behind one helper module.
+- Redact secrets from logs, error messages, audit metadata, and API responses.
+- Do not store raw VPN client private config permanently by default; only the short-TTL encrypted issue result.
+- Rate-limit login: e.g. 5+ failed attempts per login or per IP within 15 minutes -> 429 plus audit entry; an in-app counter is enough for MVP.
 - Audit admin actions.
 - Do not expose agent directly to browsers.
 - Backend is the only caller of agent HTTP API.
@@ -992,7 +1073,7 @@ Unit tests:
 - role dependencies
 - device limit enforcement
 - support visibility rules
-- HMAC signature generation
+- HMAC signature generation, including escaped path with query and public keys containing `/`, `+`, `=`
 - agent client request paths/signing
 - device issue success/failure state transitions
 - setup job state transitions
@@ -1088,6 +1169,7 @@ APP_SECRET_KEY=...
 DATABASE_URL=postgresql+asyncpg://...
 SESSION_COOKIE_NAME=vca_session
 SESSION_TTL_DAYS=30
+ISSUE_RESULT_TTL_MINUTES=15
 CORS_ORIGINS=http://localhost:5173
 ENCRYPTION_KEY=...
 FIRST_ADMIN_LOGIN=midhey
@@ -1100,6 +1182,7 @@ For setup worker:
 SETUP_WORKER_ENABLED=true
 SETUP_DEPLOY_SCRIPT_PATH=../agent/scripts/deploy-agent.sh
 SETUP_BACKEND_ALLOW_IP=...
+SETUP_AGENT_LISTEN=0.0.0.0:8090
 ```
 
 ## Notes for Claude
