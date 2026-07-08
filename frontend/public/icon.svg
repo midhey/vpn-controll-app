@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Подсос VPN">
+  <rect width="128" height="128" rx="30" fill="#0f172a"/>
+  <path d="M31 60c0-19 14-34 33-34s33 15 33 34v9c0 19-14 33-33 33S31 88 31 69v-9Z" fill="#1d4ed8"/>
+  <path d="M44 61c0-12 8-21 20-21s20 9 20 21v8c0 12-8 21-20 21s-20-9-20-21v-8Z" fill="#eff6ff"/>
+  <path d="M56 61c0-5 3-9 8-9s8 4 8 9v8c0 5-3 9-8 9s-8-4-8-9v-8Z" fill="#0f172a"/>
+  <path d="M64 28v16M64 84v16M30 64h16M82 64h16" stroke="#7dd3fc" stroke-width="7" stroke-linecap="round"/>
+</svg>
