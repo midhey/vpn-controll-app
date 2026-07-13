@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, RotateCw, XCircle } from '@lucide/vue'
+import { RotateCw, XCircle } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
@@ -39,18 +39,6 @@ async function load() {
   }
 }
 
-async function start() {
-  pending.value = true
-  try {
-    job.value = await adminApi.setupJobs.start(props.id)
-    await load()
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    pending.value = false
-  }
-}
-
 async function cancel() {
   pending.value = true
   try {
@@ -84,8 +72,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="page-actions">
         <button class="ghost-button" type="button" @click="load"><RotateCw :size="16" /> Обновить</button>
-        <button class="ghost-button" type="button" :disabled="pending" @click="start"><Play :size="16" /> Start</button>
-        <button class="danger-button" type="button" :disabled="pending" @click="cancel"><XCircle :size="16" /> Cancel</button>
+        <button v-if="!isTerminal" class="danger-button" type="button" :disabled="pending" @click="cancel">
+          <XCircle :size="16" /> Отменить
+        </button>
       </div>
     </header>
 
@@ -109,7 +98,7 @@ onBeforeUnmount(() => {
           <div><span>Finished</span><strong>{{ formatDate(job.finished_at) }}</strong></div>
           <div><span>Server node</span><strong class="mono">{{ job.server_node_id || '—' }}</strong></div>
           <div><span>Agent URL</span><strong class="mono">{{ job.agent_base_url || '—' }}</strong></div>
-          <div><span>Agent allowlist</span><strong class="mono">{{ job.agent_allow_ips.join(', ') || 'не задан (local demo)' }}</strong></div>
+          <div><span>Agent allowlist</span><strong class="mono">{{ job.agent_allow_ips.join(', ') || 'IP панели определится по SSH' }}</strong></div>
           <div v-if="job.error_message"><span>Error</span><strong>{{ job.error_message }}</strong></div>
         </div>
       </section>
@@ -154,13 +143,13 @@ onBeforeUnmount(() => {
     gap: 5px;
     min-width: 0;
     padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: rgba(10, 16, 32, 0.52);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-small);
+    background: var(--color-surface-inset);
   }
 
   span {
-    color: var(--muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
@@ -168,7 +157,7 @@ onBeforeUnmount(() => {
 
   strong {
     overflow-wrap: anywhere;
-    color: var(--text-strong);
+    color: var(--color-text-strong);
   }
 }
 
@@ -183,21 +172,21 @@ onBeforeUnmount(() => {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(10, 16, 32, 0.5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-surface-inset-subtle);
 
   strong {
-    color: var(--text-strong);
+    color: var(--color-text-strong);
   }
 
   p {
     margin: 4px 0;
-    color: var(--text);
+    color: var(--color-text);
   }
 
   small {
-    color: var(--muted);
+    color: var(--color-text-muted);
   }
 }
 

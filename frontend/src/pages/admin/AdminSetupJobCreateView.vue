@@ -15,7 +15,7 @@ const form = reactive({
   host: '',
   ssh_port: 22,
   ssh_username: 'root',
-  auth_method: 'ssh_key' as AuthMethod,
+  auth_method: 'password' as AuthMethod,
   secret: '',
   region_note: '',
   install_awg: true,
@@ -52,8 +52,8 @@ async function submit() {
   <section class="page">
     <header class="page-header">
       <div>
-        <h1>Создать setup job</h1>
-        <p>SSH-секрет используется только для установки агента, шифруется при хранении и не возвращается API.</p>
+        <h1>Установить сервер</h1>
+        <p>Панель подключится по SSH, установит агент и сама добавит сервер в систему.</p>
       </div>
     </header>
 
@@ -62,28 +62,43 @@ async function submit() {
     <section class="panel">
       <form class="panel-body form-grid cols-2" @submit.prevent="submit">
         <p class="form-note cols-2">
-          Используйте одноразовый SSH key или временный пароль. После установки отзовите этот доступ на VPS.
-          Для ключа используйте временный ключ без passphrase: passphrase пока не поддерживается setup-runner'ом.
+          SSH-пароль нужен только на время установки. Он не записывается в базу, файлы или журналы и удаляется
+          из памяти backend сразу после завершения или отмены задачи.
         </p>
-        <label class="field"><span>Server name</span><input v-model.trim="form.server_name" required /></label>
-        <label class="field"><span>Host</span><input v-model.trim="form.host" required /></label>
-        <label class="field"><span>SSH port</span><input v-model.number="form.ssh_port" type="number" min="1" max="65535" /></label>
-        <label class="field"><span>SSH username</span><input v-model.trim="form.ssh_username" required /></label>
+        <details class="setup-prerequisites cols-2">
+          <summary>Что подготовить на сервере перед установкой</summary>
+          <div class="setup-prerequisites__body">
+            <ol>
+              <li>Linux x86_64 с systemd и доступом по SSH.</li>
+              <li>
+                Пользователь <code>root</code> с паролем — рекомендуемый вариант. Для другого пользователя нужен
+                <code>sudo</code>, использующий тот же пароль.
+              </li>
+              <li>Docker должен быть установлен и запущен.</li>
+              <li>Контейнер AmneziaWG <code>amnezia-awg2</code> должен быть запущен.</li>
+              <li>Откройте TCP-порт агента <code>8090</code> только для IP сервера с этой панелью.</li>
+            </ol>
+            <p>Быстрая проверка на сервере:</p>
+            <pre><code>uname -m
+docker info
+docker ps --filter name=amnezia-awg2</code></pre>
+          </div>
+        </details>
+        <label class="field"><span>Название сервера</span><input v-model.trim="form.server_name" required /></label>
+        <label class="field"><span>IP или домен сервера</span><input v-model.trim="form.host" required /></label>
+        <label class="field"><span>SSH-порт</span><input v-model.number="form.ssh_port" type="number" min="1" max="65535" /></label>
+        <label class="field"><span>SSH-пользователь</span><input v-model.trim="form.ssh_username" required /></label>
         <label class="field">
-          <span>Auth method</span>
-          <select v-model="form.auth_method">
-            <option value="ssh_key">ssh_key</option>
-            <option value="password">password</option>
-          </select>
+          <span>SSH-пароль</span>
+          <input v-model="form.secret" required type="password" autocomplete="new-password" />
         </label>
-        <label class="field"><span>Secret</span><textarea v-model="form.secret" required rows="5" autocomplete="off"></textarea></label>
-        <label class="field"><span>Region</span><input v-model.trim="form.region_note" /></label>
+        <label class="field"><span>Регион</span><input v-model.trim="form.region_note" /></label>
         <label class="check-field"><input v-model="form.install_awg" type="checkbox" /> Проверить существующее AWG-окружение</label>
         <label class="check-field"><input v-model="form.available_for_new_devices" type="checkbox" /> Доступен для новых устройств</label>
         <label class="check-field"><input v-model="form.verify_before_install" type="checkbox" /> Выполнить SSH preflight до загрузки файлов</label>
         <div class="page-actions">
-          <RouterLink class="ghost-button" to="/admin/setup-jobs">Отмена</RouterLink>
-          <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Создать</button>
+          <RouterLink class="ghost-button" to="/admin/servers">Отмена</RouterLink>
+          <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Установить</button>
         </div>
       </form>
     </section>
@@ -94,10 +109,50 @@ async function submit() {
 .form-note {
   margin: 0;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  background: rgba(10, 16, 32, 0.52);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  color: var(--color-text-muted);
+  background: var(--color-surface-inset);
   line-height: 1.5;
+}
+
+.setup-prerequisites {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-surface-inset);
+
+  summary {
+    padding: 12px;
+    color: var(--color-text-strong);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  &[open] summary {
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
+.setup-prerequisites__body {
+  padding: 4px 16px 16px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+
+  ol {
+    padding-left: 20px;
+  }
+
+  code {
+    color: var(--color-code-text);
+  }
+
+  pre {
+    overflow-x: auto;
+    margin: 8px 0 0;
+    padding: 12px;
+    border-radius: var(--radius-small);
+    color: var(--color-code-text);
+    background: var(--color-code-background);
+  }
 }
 </style>

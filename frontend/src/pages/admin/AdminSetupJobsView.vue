@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Plus, RotateCw, XCircle } from '@lucide/vue'
+import { Plus, RotateCw, XCircle } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
@@ -27,19 +27,6 @@ async function load() {
   }
 }
 
-async function start(jobId: string) {
-  pendingId.value = jobId
-  error.value = ''
-  try {
-    const updated = await adminApi.setupJobs.start(jobId)
-    jobs.value = jobs.value.map((job) => (job.id === updated.id ? updated : job))
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    pendingId.value = ''
-  }
-}
-
 async function cancel(jobId: string) {
   pendingId.value = jobId
   error.value = ''
@@ -61,11 +48,11 @@ onMounted(load)
     <header class="page-header">
       <div>
         <h1>Setup jobs</h1>
-        <p>Создание сервера через SSH setup flow, запуск, отмена и просмотр событий.</p>
+        <p>История автоматической установки серверов через SSH.</p>
       </div>
       <div class="page-actions">
         <button class="ghost-button" type="button" @click="load"><RotateCw :size="16" /> Обновить</button>
-        <RouterLink class="button" to="/admin/setup-jobs/new"><Plus :size="17" /> Создать</RouterLink>
+        <RouterLink class="button" to="/admin/servers/new"><Plus :size="17" /> Установить сервер</RouterLink>
       </div>
     </header>
 
@@ -97,11 +84,14 @@ onMounted(load)
               <td>{{ formatDate(job.created_at) }}</td>
               <td>
                 <div class="row-actions">
-                  <button class="ghost-button" type="button" :disabled="pendingId === job.id" @click="start(job.id)">
-                    <Play :size="16" /> Start
-                  </button>
-                  <button class="ghost-button" type="button" :disabled="pendingId === job.id" @click="cancel(job.id)">
-                    <XCircle :size="16" /> Cancel
+                  <button
+                    v-if="!['success', 'failed', 'cancelled'].includes(job.status)"
+                    class="ghost-button"
+                    type="button"
+                    :disabled="pendingId === job.id"
+                    @click="cancel(job.id)"
+                  >
+                    <XCircle :size="16" /> Отменить
                   </button>
                   <RouterLink class="ghost-button" :to="`/admin/setup-jobs/${job.id}`">Открыть</RouterLink>
                 </div>

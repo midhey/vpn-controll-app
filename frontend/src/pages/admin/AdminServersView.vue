@@ -63,12 +63,13 @@ onMounted(load)
   <section class="page is-wide">
     <header class="page-header">
       <div>
-        <h1>Servers</h1>
-        <p>Ручные серверы, health-check, enable/disable и peers.</p>
+        <h1>Серверы</h1>
+        <p>Установка агентов, проверка состояния и управление доступностью серверов.</p>
       </div>
       <div class="page-actions">
         <button class="ghost-button" type="button" @click="load"><RotateCw :size="16" /> Обновить</button>
-        <RouterLink class="button" to="/admin/servers/new"><Plus :size="17" /> Создать</RouterLink>
+        <RouterLink class="ghost-button" to="/admin/servers/manual">Подключить готовый агент</RouterLink>
+        <RouterLink class="button" to="/admin/servers/new"><Plus :size="17" /> Установить сервер</RouterLink>
       </div>
     </header>
 

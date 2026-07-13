@@ -61,6 +61,12 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'admin/servers/new',
         name: 'admin-server-create',
+        component: AdminSetupJobCreateView,
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: 'admin/servers/manual',
+        name: 'admin-server-create-manual',
         component: AdminServerCreateView,
         meta: { requiresAdmin: true },
       },
