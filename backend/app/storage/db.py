@@ -5,7 +5,7 @@ from dataclasses import fields
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 
 from app.db.models import (
     AuditLogEntryRow,
@@ -255,14 +255,61 @@ class DatabaseStorage:
             ).all()
             return [_setup_job(row) for row in rows]
 
-    def next_queued_setup_job(self) -> SetupJob | None:
-        with self.database.session() as session:
-            row = session.scalar(
-                select(SetupJobRow)
-                .where(SetupJobRow.status == SetupJobStatus.QUEUED.value)
-                .order_by(SetupJobRow.created_at)
-                .limit(1)
+    def claim_next_setup_job(self, at: datetime, current_step: str) -> SetupJob | None:
+        """Claim one queued job and mark it working in one database statement.
+
+        PostgreSQL locks the candidate row with SKIP LOCKED, so multiple backend
+        workers claim different jobs without waiting or deploying one job twice.
+        The additional queued predicate keeps the statement safe on dialects
+        that ignore FOR UPDATE (used by the SQLite concurrency test).
+        """
+        candidate = (
+            select(SetupJobRow.id)
+            .where(SetupJobRow.status == SetupJobStatus.QUEUED.value)
+            .order_by(SetupJobRow.created_at)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+            .scalar_subquery()
+        )
+        statement = (
+            update(SetupJobRow)
+            .where(
+                SetupJobRow.id == candidate,
+                SetupJobRow.status == SetupJobStatus.QUEUED.value,
             )
+            .values(
+                status=SetupJobStatus.CHECKING_SSH.value,
+                current_step=current_step,
+                started_at=at,
+                updated_at=at,
+            )
+            .returning(SetupJobRow)
+        )
+        with self.database.session() as session:
+            row = session.scalar(statement)
+            return _setup_job(row) if row else None
+
+    def transition_setup_job(
+        self,
+        job_id: str,
+        expected_statuses: set[SetupJobStatus],
+        values: dict[str, Any],
+    ) -> SetupJob | None:
+        stored_values = dict(values)
+        status = stored_values.get("status")
+        if isinstance(status, SetupJobStatus):
+            stored_values["status"] = status.value
+        statement = (
+            update(SetupJobRow)
+            .where(
+                SetupJobRow.id == job_id,
+                SetupJobRow.status.in_(status.value for status in expected_statuses),
+            )
+            .values(**stored_values)
+            .returning(SetupJobRow)
+        )
+        with self.database.session() as session:
+            row = session.scalar(statement)
             return _setup_job(row) if row else None
 
     def add_setup_event(self, event: SetupJobEvent) -> None:

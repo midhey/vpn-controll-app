@@ -41,17 +41,17 @@ DB_USER=vpn_user
 DB_PASSWORD=password
 ```
 
-Тесты: `uv run pytest` (агент и установка — фейки, сеть не нужна).
+Тесты: `uv run pytest` (local demo использует фейки, сеть не нужна).
 
-## Что настоящее, а что заглушка
+## Безопасный production setup
 
 | Часть | Сейчас | На интеграции |
 |---|---|---|
 | Хранилище | PostgreSQL при заданной БД; иначе in-memory fallback | боевой backup/monitoring БД |
 | Пароли | PBKDF2 (stdlib) | argon2id (`argon2-cffi`), формат хеша самоописываемый |
-| Шифрование секретов | `PlaintextSecretBox` (base64-пометка, не защита) | Fernet (`cryptography`) c `ENCRYPTION_KEY` |
-| Агент | `FakeAgentTransport` — имитация узла на каждый URL | `HttpxAgentTransport` уже написан (`AGENT_MODE=http`) |
-| Установка VPS | `StubSetupRunner` — имитация шагов | запуск `agent/scripts/deploy-agent.sh` по SSH |
+| Шифрование секретов | local-only `PlaintextSecretBox` с warning | Fernet (`cryptography`) c `ENCRYPTION_KEY` |
+| Агент | `FakeAgentTransport` только в `APP_ENV=local` | `HttpxAgentTransport` (`AGENT_MODE=http`) |
+| Установка VPS | `StubSetupRunner` только в `APP_ENV=local` | `DeployScriptSetupRunner` запускает `agent/scripts/deploy-agent.sh` без shell |
 | HMAC-подпись запросов к агенту | **настоящая**, байт-в-байт как в `agent/internal/httpapi/auth.go`, закреплена тестами | без изменений |
 | Сессии, роли, лимиты, аудит, CSRF, rate-limit входа | настоящие | без изменений |
 
@@ -61,6 +61,47 @@ DB_PASSWORD=password
   смотреть экран ошибки;
 - задержка шагов установки — `SETUP_STEP_DELAY_SECONDS` (по умолчанию 1.2 с, чтобы
   статусы в UI были видны).
+
+В любом `APP_ENV`, отличном от `local`, backend откажется стартовать, если не
+заданы все безопасные параметры:
+
+```dotenv
+APP_ENV=production
+AGENT_MODE=http
+ENCRYPTION_KEY=<Fernet key>
+SETUP_RUNNER=deploy_script
+SETUP_AGENT_ALLOW_IPS=10.0.0.5
+# private адрес предпочтительнее; public bind требует отдельного firewall rule
+SETUP_AGENT_LISTEN=10.0.0.10:8090
+SETUP_AGENT_BASE_URL_TEMPLATE=http://{host}:8090
+```
+
+Генерация ключа: `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+`SETUP_AGENT_ALLOW_IPS` парсится как IP/CIDR и нормализуется. Любая IPv4/IPv6
+сеть с нулевым prefix (`0.0.0.0/0`, `::/0` и эквивалентные записи) запрещена,
+пока явно не установлен аварийный override
+`SETUP_ALLOW_PUBLIC_AGENT_ACCESS=true`.
+
+Runner держит SSH password только в памяти процесса и передаёт его OpenSSH через
+краткоживущую переменную окружения `SSH_ASKPASS`; в БД и setup job пароль не
+записывается вообще. HMAC secret передаётся через отдельную краткоживущую
+переменную, а SSH key — через удаляемый временный файл с mode `0600`. Секреты не
+попадают в аргументы процесса, API response, события setup или audit. После
+`success`, `failed` и `cancelled` SSH-пароль удаляется из памяти. Agent service
+получает HMAC secret из `/etc/vpn-agent/<service>.env` с mode `0600`; локальная
+и remote temporary копии также имеют `0600` с момента создания и очищаются при
+ошибке/сигнале. Открой порт агента в firewall только для backend/private network.
+
+При `verify_before_install=true` runner сначала выполняет отдельный реальный SSH
+preflight без загрузки файлов. Установка всегда запускается с `--skip-inspect`,
+после чего `install_awg=true` включает отдельный `--inspect-only`; при `false`
+этот шаг честно пропускается. Независимо от обоих флагов финальный подписанный
+health/status check обязателен.
+
+`deploy-agent.sh` проверяет существующее AWG/Docker-окружение, но не пытается
+самостоятельно установить AmneziaWG: provisioning сети и образа остаётся явной
+операцией инфраструктуры. Узел не выдаётся пользователям, пока финальный
+подписанный health/status check не переведёт его в `online` или `warning`.
 
 ## Быстрый сценарий руками (через Swagger)
 

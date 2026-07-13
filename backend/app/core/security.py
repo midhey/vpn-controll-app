@@ -1,11 +1,4 @@
-"""Пароли, токены сессий и шифрование секретов при хранении.
-
-Скелет обходится стандартной библиотекой:
-- PBKDF2 — временная замена argon2id (`argon2-cffi` подключится вместе
-  с прод-зависимостями, интерфейс не изменится);
-- PlaintextSecretBox только кодирует base64 и НЕ является защитой —
-  при подключении БД заменяется на Fernet (`cryptography`) с ENCRYPTION_KEY.
-"""
+"""Пароли, токены сессий и шифрование секретов при хранении."""
 
 from __future__ import annotations
 
@@ -77,10 +70,7 @@ class SecretBox:
 
 
 class PlaintextSecretBox(SecretBox):
-    """Заглушка для in-memory скелета: только помечает значение как «упакованное».
-
-    Не защита. Реальная реализация — Fernet с ENCRYPTION_KEY.
-    """
+    """Небезопасный dev-only fallback. Никогда не использовать вне local."""
 
     _prefix = "plain$"
 
@@ -91,3 +81,28 @@ class PlaintextSecretBox(SecretBox):
         if not value.startswith(self._prefix):
             raise ValueError("unknown secret box format")
         return base64.b64decode(value[len(self._prefix) :]).decode("utf-8")
+
+
+class FernetSecretBox(SecretBox):
+    """Authenticated encryption for credentials persisted by the control plane."""
+
+    _prefix = "fernet$"
+
+    def __init__(self, key: str) -> None:
+        try:
+            from cryptography.fernet import Fernet
+
+            self._fernet = Fernet(key.encode("ascii"))
+        except (ImportError, ValueError, UnicodeEncodeError) as exc:
+            raise ValueError("ENCRYPTION_KEY must be a valid Fernet key") from exc
+
+    def encrypt(self, value: str) -> str:
+        return self._prefix + self._fernet.encrypt(value.encode("utf-8")).decode("ascii")
+
+    def decrypt(self, value: str) -> str:
+        if not value.startswith(self._prefix):
+            raise ValueError("unknown secret box format")
+        try:
+            return self._fernet.decrypt(value[len(self._prefix) :].encode("ascii")).decode("utf-8")
+        except Exception as exc:  # InvalidToken intentionally has no useful public detail.
+            raise ValueError("secret cannot be decrypted") from exc

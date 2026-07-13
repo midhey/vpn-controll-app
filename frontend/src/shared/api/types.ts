@@ -283,6 +283,8 @@ export interface SetupJobOut {
   created_at: string
   started_at?: string | null
   finished_at?: string | null
+  agent_base_url?: string | null
+  agent_allow_ips: string[]
 }
 
 export interface SetupJobEventOut {

@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import datetime
+from typing import Any
 
 from app.domain.models import (
     AuditLogEntry,
@@ -40,6 +42,7 @@ class InMemoryStorage:
         self.support_settings = SupportSettings()
         self._setup_jobs: dict[str, SetupJob] = {}
         self._setup_events: dict[str, list[SetupJobEvent]] = {}
+        self._setup_jobs_guard = threading.Lock()
         self._audit: list[AuditLogEntry] = []
         self._login_failures: dict[str, list[datetime]] = {}
 
@@ -180,10 +183,37 @@ class InMemoryStorage:
     def list_setup_jobs(self) -> list[SetupJob]:
         return sorted(self._setup_jobs.values(), key=lambda j: j.created_at, reverse=True)
 
-    def next_queued_setup_job(self) -> SetupJob | None:
+    def _next_queued_setup_job(self) -> SetupJob | None:
         queued = [j for j in self._setup_jobs.values() if j.status == SetupJobStatus.QUEUED]
         queued.sort(key=lambda j: j.created_at)
         return queued[0] if queued else None
+
+    def claim_next_setup_job(self, at: datetime, current_step: str) -> SetupJob | None:
+        with self._setup_jobs_guard:
+            job = self._next_queued_setup_job()
+            if job is None:
+                return None
+            job.status = SetupJobStatus.CHECKING_SSH
+            job.current_step = current_step
+            job.started_at = at
+            job.updated_at = at
+            self.save_setup_job(job)
+            return job
+
+    def transition_setup_job(
+        self,
+        job_id: str,
+        expected_statuses: set[SetupJobStatus],
+        values: dict[str, Any],
+    ) -> SetupJob | None:
+        with self._setup_jobs_guard:
+            job = self._setup_jobs.get(job_id)
+            if job is None or job.status not in expected_statuses:
+                return None
+            for field_name, value in values.items():
+                setattr(job, field_name, value)
+            self.save_setup_job(job)
+            return job
 
     def add_setup_event(self, event: SetupJobEvent) -> None:
         self._setup_events.setdefault(event.setup_job_id, []).append(event)

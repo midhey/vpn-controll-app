@@ -53,7 +53,7 @@ async function submit() {
     <header class="page-header">
       <div>
         <h1>Создать setup job</h1>
-        <p>Секрет SSH передаётся только в create-запросе и не возвращается API.</p>
+        <p>SSH-секрет используется только для установки агента, шифруется при хранении и не возвращается API.</p>
       </div>
     </header>
 
@@ -61,6 +61,10 @@ async function submit() {
 
     <section class="panel">
       <form class="panel-body form-grid cols-2" @submit.prevent="submit">
+        <p class="form-note cols-2">
+          Используйте одноразовый SSH key или временный пароль. После установки отзовите этот доступ на VPS.
+          Для ключа используйте временный ключ без passphrase: passphrase пока не поддерживается setup-runner'ом.
+        </p>
         <label class="field"><span>Server name</span><input v-model.trim="form.server_name" required /></label>
         <label class="field"><span>Host</span><input v-model.trim="form.host" required /></label>
         <label class="field"><span>SSH port</span><input v-model.number="form.ssh_port" type="number" min="1" max="65535" /></label>
@@ -74,9 +78,9 @@ async function submit() {
         </label>
         <label class="field"><span>Secret</span><textarea v-model="form.secret" required rows="5" autocomplete="off"></textarea></label>
         <label class="field"><span>Region</span><input v-model.trim="form.region_note" /></label>
-        <label class="check-field"><input v-model="form.install_awg" type="checkbox" /> Install AWG</label>
+        <label class="check-field"><input v-model="form.install_awg" type="checkbox" /> Проверить существующее AWG-окружение</label>
         <label class="check-field"><input v-model="form.available_for_new_devices" type="checkbox" /> Доступен для новых устройств</label>
-        <label class="check-field"><input v-model="form.verify_before_install" type="checkbox" /> Verify before install</label>
+        <label class="check-field"><input v-model="form.verify_before_install" type="checkbox" /> Выполнить SSH preflight до загрузки файлов</label>
         <div class="page-actions">
           <RouterLink class="ghost-button" to="/admin/setup-jobs">Отмена</RouterLink>
           <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Создать</button>
@@ -85,3 +89,15 @@ async function submit() {
     </section>
   </section>
 </template>
+
+<style scoped lang="scss">
+.form-note {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: rgba(10, 16, 32, 0.52);
+  line-height: 1.5;
+}
+</style>

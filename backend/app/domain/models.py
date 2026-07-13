@@ -200,7 +200,8 @@ class SetupJob:
     created_at: datetime
     updated_at: datetime
     status: SetupJobStatus = SetupJobStatus.QUEUED
-    # SSH-ключ/пароль, зашифрованные SecretBox; очищается на терминальном статусе.
+    # Legacy nullable column. Новые SSH-секреты сюда не записываются: они живут
+    # только в памяти процесса setup worker до завершения операции.
     secret_encrypted: str | None = None
     region_note: str | None = None
     install_awg: bool = True

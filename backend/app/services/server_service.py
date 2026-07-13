@@ -135,7 +135,7 @@ class ServerService:
     def create_from_setup(
         self, job: SetupJob, *, agent_base_url: str, agent_key_id: str, agent_secret: str
     ) -> ServerNode:
-        """Узел из успешной setup-джобы; воркер затем прогоняет health-check."""
+        """Create a quarantined node; availability is enabled only after job success."""
         now = self._clock()
         node = ServerNode(
             id=str(uuid.uuid4()),
@@ -148,10 +148,17 @@ class ServerService:
             agent_key_id=agent_key_id,
             agent_secret_encrypted=self._secret_box.encrypt(agent_secret),
             status=ServerStatus.SETUP_RUNNING,
-            is_available_for_new_devices=job.available_for_new_devices,
+            is_available_for_new_devices=False,
             created_by_user_id=job.created_by_user_id,
         )
         self._storage.add_server_node(node)
+        return node
+
+    def activate_after_setup(self, node_id: str, available: bool) -> ServerNode:
+        node = self.get(node_id)
+        node.is_available_for_new_devices = available
+        node.updated_at = self._clock()
+        self._storage.save_server_node(node)
         return node
 
     def update(self, actor: User, node_id: str, patch: dict[str, Any]) -> ServerNode:

@@ -108,7 +108,15 @@ onBeforeUnmount(() => {
           <div><span>Started</span><strong>{{ formatDate(job.started_at) }}</strong></div>
           <div><span>Finished</span><strong>{{ formatDate(job.finished_at) }}</strong></div>
           <div><span>Server node</span><strong class="mono">{{ job.server_node_id || '—' }}</strong></div>
+          <div><span>Agent URL</span><strong class="mono">{{ job.agent_base_url || '—' }}</strong></div>
+          <div><span>Agent allowlist</span><strong class="mono">{{ job.agent_allow_ips.join(', ') || 'не задан (local demo)' }}</strong></div>
           <div v-if="job.error_message"><span>Error</span><strong>{{ job.error_message }}</strong></div>
+        </div>
+      </section>
+
+      <section v-if="job.status === 'success' && job.server_node_id" class="panel">
+        <div class="panel-body">
+          <p>Узел доступен для новых устройств только после успешного health-check. <RouterLink :to="`/admin/servers/${job.server_node_id}`">Открыть server node</RouterLink></p>
         </div>
       </section>
 

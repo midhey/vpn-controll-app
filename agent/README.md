@@ -123,7 +123,8 @@ agent/scripts/deploy-agent.sh \
 
 ### Deploy по паролю
 
-Парольный режим использует `sshpass`. Он должен быть установлен на локальной машине.
+Парольный режим использует стандартный механизм OpenSSH `SSH_ASKPASS`.
+Дополнительная утилита `sshpass` не нужна; временный helper удаляется после команды.
 
 С prompt:
 
@@ -214,7 +215,23 @@ agent/scripts/deploy-agent.sh \
 /etc/systemd/system/vpn-agent.service
 ```
 
-HMAC key id и secret попадают только в env-файл (mode `600`) и читаются агентом из переменных окружения `VPN_AGENT_KEY_ID`/`VPN_AGENT_SECRET`; в командную строку процесса (`/proc/<pid>/cmdline`) они не передаются.
+HMAC key id и secret попадают только в env-файл (mode `600`) и читаются агентом из переменных окружения `VPN_AGENT_KEY_ID`/`VPN_AGENT_SECRET`; в командную строку процесса (`/proc/<pid>/cmdline`) они не передаются. Локальный temporary env создаётся сразу с mode `0600`; remote artifacts размещаются в уникальном каталоге mode `0700`, а remote env также имеет `0600`. Они удаляются через trap при success, error и сигналах `HUP`/`INT`/`TERM`. `--keep-artifact` никогда не сохраняет secret env-файл.
+
+Для автоматизации не передавайте секреты в аргументах процесса. Скрипт умеет
+прочитать их из уже заданных environment variables:
+
+```bash
+VPN_AGENT_DEPLOY_SSH_PASSWORD='temporary-password' \
+VPN_AGENT_DEPLOY_HMAC_SECRET='generated-hmac-secret' \
+agent/scripts/deploy-agent.sh --user root --host 203.0.113.10 \
+  --password-env VPN_AGENT_DEPLOY_SSH_PASSWORD \
+  --install-service --hmac-key-id backend \
+  --hmac-secret-env VPN_AGENT_DEPLOY_HMAC_SECRET \
+  --allow-ip 10.0.0.5
+```
+
+Не используйте `0.0.0.0/0` для `--allow-ip`: firewall VPS также должен
+разрешать порт агента только с IP/CIDR backend-а или private network.
 
 Service слушает `127.0.0.1:8090` по умолчанию. Изменить:
 
@@ -254,7 +271,7 @@ agent/scripts/deploy-agent.sh --help
 | --- | --- | --- |
 | `--user` | required | SSH username |
 | `--host` | required | SSH host/IP |
-| `--password` | empty | SSH password, требует `sshpass` |
+| `--password` | empty | SSH password через временный `SSH_ASKPASS` helper |
 | `--ask-password` | `false` | спросить SSH password интерактивно |
 | `--identity-file` | empty | SSH key path |
 | `--ssh-port` | `22` | SSH port |
@@ -269,6 +286,8 @@ agent/scripts/deploy-agent.sh --help
 | `--binary` | empty | загрузить готовый binary вместо сборки |
 | `--skip-build` | `false` | не собирать, требует `--binary` |
 | `--skip-inspect` | `false` | не запускать verify через `inspect` |
+| `--preflight-only` | `false` | проверить реальный SSH-доступ без загрузки файлов |
+| `--inspect-only` | `false` | выполнить inspect уже установленным агентом без сборки/загрузки |
 | `--keep-artifact` | `false` | не удалять локальный build artifact |
 | `--verbose` | `false` | печатать выполняемые команды |
 | `--endpoint-host` | значение `--host` | публичный endpoint для клиентских конфигов |
@@ -277,8 +296,14 @@ agent/scripts/deploy-agent.sh --help
 | `--listen` | `127.0.0.1:8090` | listen address для HTTP API |
 | `--hmac-key-id` | empty | HTTP HMAC key id |
 | `--hmac-secret` | empty | HTTP HMAC secret |
+| `--password-env` | empty | имя environment variable с SSH password |
+| `--hmac-secret-env` | empty | имя environment variable с HMAC secret |
 | `--allow-ip` | `127.0.0.1,::1` | allowlist для HTTP API |
 | `--allow-no-auth` | `false` | разрешить HTTP без подписи, только если secret пустой |
+
+Username проверяется по строгому формату, а `ssh`/`scp` получают username и host
+раздельно с явным завершением списка опций. Это не позволяет превратить значения
+из setup API в локальные SSH options.
 
 Если `--endpoint-host` не передан, deploy script использует значение `--host`. Для публичного VPN endpoint это удобно, но если SSH идет через внутренний адрес, передай публичный endpoint явно:
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from ipaddress import ip_network
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -43,9 +44,17 @@ class Settings:
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_minutes: int = 15
     agent_mode: str = "fake"  # fake | http
+    encryption_key: str | None = None
     setup_worker_enabled: bool = True
     setup_worker_poll_seconds: float = 0.5
     setup_step_delay_seconds: float = 1.2
+    setup_runner: str = "stub"  # stub | deploy_script
+    setup_deploy_script_path: str = "../agent/scripts/deploy-agent.sh"
+    setup_agent_listen: str = "127.0.0.1:8090"
+    setup_agent_base_url_template: str = "http://{host}:8090"
+    setup_agent_allow_ips: list[str] = field(default_factory=list)
+    setup_timeout_seconds: float = 600.0
+    setup_allow_public_agent_access: bool = False
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -54,7 +63,7 @@ class Settings:
         env = dict(os.environ) if env is None else env
         app_env = env.get("APP_ENV", "local").strip() or "local"
         not_local = app_env != "local"
-        return cls(
+        settings = cls(
             app_env=app_env,
             database_url=_build_database_url(env),
             db_host=env.get("DB_HOST") or None,
@@ -76,10 +85,72 @@ class Settings:
                 env.get("LOGIN_RATE_LIMIT_WINDOW_MINUTES", "15")
             ),
             agent_mode=env.get("AGENT_MODE", "fake"),
+            encryption_key=env.get("ENCRYPTION_KEY") or None,
             setup_worker_enabled=_bool(env.get("SETUP_WORKER_ENABLED"), True),
             setup_worker_poll_seconds=float(env.get("SETUP_WORKER_POLL_SECONDS", "0.5")),
             setup_step_delay_seconds=float(env.get("SETUP_STEP_DELAY_SECONDS", "1.2")),
+            setup_runner=env.get("SETUP_RUNNER", "stub").strip() or "stub",
+            setup_deploy_script_path=(
+                env.get("SETUP_DEPLOY_SCRIPT_PATH", "../agent/scripts/deploy-agent.sh").strip()
+            ),
+            setup_agent_listen=env.get("SETUP_AGENT_LISTEN", "127.0.0.1:8090").strip(),
+            setup_agent_base_url_template=env.get(
+                "SETUP_AGENT_BASE_URL_TEMPLATE", "http://{host}:8090"
+            ).strip(),
+            setup_agent_allow_ips=_csv(env.get("SETUP_AGENT_ALLOW_IPS"), []),
+            setup_timeout_seconds=float(env.get("SETUP_TIMEOUT_SECONDS", "600")),
+            setup_allow_public_agent_access=_bool(
+                env.get("SETUP_ALLOW_PUBLIC_AGENT_ACCESS"), False
+            ),
         )
+        settings.validate()
+        return settings
+
+    def validate(self) -> None:
+        """Reject configurations that would silently turn a production install into a demo."""
+        if self.agent_mode not in {"fake", "http"}:
+            raise ValueError("AGENT_MODE must be fake or http")
+        if self.setup_runner not in {"stub", "deploy_script"}:
+            raise ValueError("SETUP_RUNNER must be stub or deploy_script")
+        if self.setup_timeout_seconds <= 0:
+            raise ValueError("SETUP_TIMEOUT_SECONDS must be positive")
+        if "{host}" not in self.setup_agent_base_url_template:
+            raise ValueError("SETUP_AGENT_BASE_URL_TEMPLATE must contain {host}")
+
+        normalized_allow_ips: list[str] = []
+        for value in self.setup_agent_allow_ips:
+            try:
+                network = ip_network(value, strict=False)
+            except ValueError as exc:
+                raise ValueError(
+                    f"SETUP_AGENT_ALLOW_IPS contains invalid IP/CIDR: {value}"
+                ) from exc
+            if (
+                self.app_env != "local"
+                and network.prefixlen == 0
+                and not self.setup_allow_public_agent_access
+            ):
+                raise ValueError(
+                    "SETUP_AGENT_ALLOW_IPS must not allow the internet; set "
+                    "SETUP_ALLOW_PUBLIC_AGENT_ACCESS=true only after an explicit risk review"
+                )
+            normalized_allow_ips.append(str(network))
+        self.setup_agent_allow_ips = normalized_allow_ips
+
+        if self.app_env == "local":
+            return
+        if self.agent_mode != "http":
+            raise ValueError("AGENT_MODE=http is required outside APP_ENV=local")
+        if not self.encryption_key:
+            raise ValueError("ENCRYPTION_KEY is required outside APP_ENV=local")
+        # Instantiate the box here so a malformed key fails before the app serves traffic.
+        from app.core.security import FernetSecretBox
+
+        FernetSecretBox(self.encryption_key)
+        if self.setup_runner != "deploy_script":
+            raise ValueError("SETUP_RUNNER=deploy_script is required outside APP_ENV=local")
+        if not self.setup_agent_allow_ips:
+            raise ValueError("SETUP_AGENT_ALLOW_IPS is required outside APP_ENV=local")
 
 
 def _build_database_url(env: dict[str, str]) -> str | None:

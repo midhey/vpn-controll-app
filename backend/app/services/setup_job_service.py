@@ -1,8 +1,8 @@
 """Задачи установки VPS: очередь, шаги, события.
 
-SSH-секрет хранится только зашифрованным и очищается на терминальном статусе,
-поэтому «повторить» завершённую задачу нельзя — создаётся новая (фронт
-пересобирает форму). Реальную установку выполняет воркер (пока — заглушка).
+SSH-секрет никогда не попадает в модель job или постоянное хранилище. Он живёт
+только в памяти процесса до завершения установки. После рестарта backend такую
+задачу продолжить нельзя — администратор создаёт новую и вводит пароль заново.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Any
 
 from app.core.errors import AppError, ErrorCode, not_found
-from app.core.security import SecretBox
 from app.domain.models import (
     AuthMethod,
     EventLevel,
@@ -27,6 +26,7 @@ from app.storage.memory import InMemoryStorage
 
 # Человеческие подписи шагов для UI.
 STEP_LABELS = {
+    SetupJobStatus.DRAFT: "Черновик",
     SetupJobStatus.QUEUED: "В очереди",
     SetupJobStatus.CHECKING_SSH: "Проверяем SSH-подключение",
     SetupJobStatus.INSTALLING_AGENT: "Устанавливаем агент",
@@ -37,19 +37,30 @@ STEP_LABELS = {
     SetupJobStatus.CANCELLED: "Отменено",
 }
 
+NON_TERMINAL_STATUSES = {
+    SetupJobStatus.DRAFT,
+    SetupJobStatus.QUEUED,
+    SetupJobStatus.CHECKING_SSH,
+    SetupJobStatus.INSTALLING_AGENT,
+    SetupJobStatus.INSTALLING_VPN,
+    SetupJobStatus.VERIFYING,
+}
+
 
 class SetupJobService:
     def __init__(
         self,
         storage: InMemoryStorage,
-        secret_box: SecretBox,
         audit: AuditService,
         clock: Callable[[], datetime],
+        *,
+        worker_enabled: bool,
     ) -> None:
         self._storage = storage
-        self._secret_box = secret_box
         self._audit = audit
         self._clock = clock
+        self._worker_enabled = worker_enabled
+        self._ephemeral_ssh_secrets: dict[str, str] = {}
 
     def create(
         self,
@@ -72,6 +83,13 @@ class SetupJobService:
                 "Нужен SSH-ключ или пароль для подключения",
                 status=400,
             )
+        if not self._worker_enabled:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Воркер установки выключен; пароль не будет сохранён — включи "
+                "SETUP_WORKER_ENABLED и создай задачу заново",
+                status=409,
+            )
         now = self._clock()
         job = SetupJob(
             id=str(uuid.uuid4()),
@@ -83,7 +101,7 @@ class SetupJobService:
             auth_method=auth_method,
             created_at=now,
             updated_at=now,
-            secret_encrypted=self._secret_box.encrypt(secret),
+            secret_encrypted=None,
             region_note=region_note,
             install_awg=install_awg,
             available_for_new_devices=available_for_new_devices,
@@ -91,8 +109,18 @@ class SetupJobService:
             status=SetupJobStatus.QUEUED,
             current_step=STEP_LABELS[SetupJobStatus.QUEUED],
         )
-        self._storage.add_setup_job(job)
-        self.add_event(job, EventLevel.INFO, "queued", "Задача поставлена в очередь")
+        self._ephemeral_ssh_secrets[job.id] = secret
+        try:
+            self._storage.add_setup_job(job)
+        except Exception:
+            self.forget_ephemeral_ssh_secret(job.id)
+            raise
+        self.add_event(
+            job,
+            EventLevel.INFO,
+            job.status.value,
+            "Задача поставлена в очередь; SSH-пароль хранится только в памяти процесса",
+        )
         self._audit.log(
             "setup_job_created",
             actor_user_id=actor.id,
@@ -101,6 +129,12 @@ class SetupJobService:
             metadata={"server_name": job.server_name, "host": job.host},
         )
         return job
+
+    def get_ephemeral_ssh_secret(self, job_id: str) -> str | None:
+        return self._ephemeral_ssh_secrets.get(job_id)
+
+    def forget_ephemeral_ssh_secret(self, job_id: str) -> None:
+        self._ephemeral_ssh_secrets.pop(job_id, None)
 
     def get(self, job_id: str) -> SetupJob:
         job = self._storage.get_setup_job(job_id)
@@ -116,8 +150,14 @@ class SetupJobService:
         return self._storage.list_setup_events(job_id)
 
     def start(self, actor: User, job_id: str) -> SetupJob:
-        """Создание сразу ставит в очередь; start оставлен для draft-задач."""
+        """Создание сразу ставит в очередь; повторный start ничего не сохраняет."""
         job = self.get(job_id)
+        if not self._worker_enabled:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Воркер установки выключен; включи SETUP_WORKER_ENABLED, чтобы запустить задачу",
+                status=409,
+            )
         if job.status.is_terminal:
             raise AppError(
                 ErrorCode.VALIDATION_ERROR,
@@ -125,26 +165,32 @@ class SetupJobService:
                 status=409,
             )
         if job.status == SetupJobStatus.DRAFT:
-            job.status = SetupJobStatus.QUEUED
-            job.current_step = STEP_LABELS[SetupJobStatus.QUEUED]
-            job.updated_at = self._clock()
-            self._storage.save_setup_job(job)
-            self.add_event(job, EventLevel.INFO, "queued", "Задача поставлена в очередь")
+            raise AppError(
+                ErrorCode.SECRET_REQUIRED,
+                "SSH-пароль не хранится; создай новую задачу и введи пароль заново",
+                status=409,
+            )
         return job
 
     def cancel(self, actor: User, job_id: str) -> SetupJob:
-        job = self.get(job_id)
-        if job.status.is_terminal:
+        self.get(job_id)
+        now = self._clock()
+        job = self._storage.transition_setup_job(
+            job_id,
+            NON_TERMINAL_STATUSES,
+            {
+                "status": SetupJobStatus.CANCELLED,
+                "current_step": STEP_LABELS[SetupJobStatus.CANCELLED],
+                "finished_at": now,
+                "updated_at": now,
+                "secret_encrypted": None,
+            },
+        )
+        if job is None:
             raise AppError(
                 ErrorCode.VALIDATION_ERROR, "Задача уже завершена", status=409
             )
-        now = self._clock()
-        job.status = SetupJobStatus.CANCELLED
-        job.current_step = STEP_LABELS[SetupJobStatus.CANCELLED]
-        job.finished_at = now
-        job.updated_at = now
-        job.secret_encrypted = None
-        self._storage.save_setup_job(job)
+        self.forget_ephemeral_ssh_secret(job_id)
         self.add_event(job, EventLevel.WARNING, "cancelled", "Задача отменена")
         self._audit.log(
             "setup_job_cancelled",
@@ -157,22 +203,38 @@ class SetupJobService:
     # --- методы для воркера ---
 
     def claim_next(self) -> SetupJob | None:
-        job = self._storage.next_queued_setup_job()
+        now = self._clock()
+        job = self._storage.claim_next_setup_job(
+            now, STEP_LABELS[SetupJobStatus.CHECKING_SSH]
+        )
         if job is not None:
-            job.started_at = self._clock()
-            self._storage.save_setup_job(job)
+            self.add_event(
+                job,
+                EventLevel.INFO,
+                SetupJobStatus.CHECKING_SSH.value,
+                "Подготовка SSH preflight",
+            )
         return job
 
-    def is_cancelled(self, job_id: str) -> bool:
-        job = self._storage.get_setup_job(job_id)
-        return job is None or job.status == SetupJobStatus.CANCELLED
-
-    def set_step(self, job: SetupJob, status: SetupJobStatus, message: str) -> None:
-        job.status = status
-        job.current_step = STEP_LABELS[status]
-        job.updated_at = self._clock()
-        self._storage.save_setup_job(job)
-        self.add_event(job, EventLevel.INFO, status.value, message)
+    def set_step(
+        self,
+        job_id: str,
+        expected_statuses: set[SetupJobStatus],
+        status: SetupJobStatus,
+        message: str,
+    ) -> SetupJob | None:
+        job = self._storage.transition_setup_job(
+            job_id,
+            expected_statuses,
+            {
+                "status": status,
+                "current_step": STEP_LABELS[status],
+                "updated_at": self._clock(),
+            },
+        )
+        if job is not None:
+            self.add_event(job, EventLevel.INFO, status.value, message)
+        return job
 
     def add_event(
         self,
@@ -194,16 +256,24 @@ class SetupJobService:
             )
         )
 
-    def finish_success(self, job: SetupJob, server_node_id: str) -> None:
+    def finish_success(self, job_id: str, server_node_id: str) -> SetupJob | None:
         now = self._clock()
-        job.status = SetupJobStatus.SUCCESS
-        job.current_step = STEP_LABELS[SetupJobStatus.SUCCESS]
-        job.server_node_id = server_node_id
-        job.finished_at = now
-        job.updated_at = now
-        job.secret_encrypted = None
-        job.result_payload = {"server_node_id": server_node_id}
-        self._storage.save_setup_job(job)
+        job = self._storage.transition_setup_job(
+            job_id,
+            {SetupJobStatus.VERIFYING},
+            {
+                "status": SetupJobStatus.SUCCESS,
+                "current_step": STEP_LABELS[SetupJobStatus.SUCCESS],
+                "server_node_id": server_node_id,
+                "finished_at": now,
+                "updated_at": now,
+                "secret_encrypted": None,
+                "result_payload": {"server_node_id": server_node_id},
+            },
+        )
+        self.forget_ephemeral_ssh_secret(job_id)
+        if job is None:
+            return None
         self.add_event(job, EventLevel.INFO, "success", "Узел установлен и подключён")
         self._audit.log(
             "setup_job_succeeded",
@@ -211,16 +281,25 @@ class SetupJobService:
             target_id=job.id,
             metadata={"server_node_id": server_node_id},
         )
+        return job
 
-    def finish_failed(self, job: SetupJob, error_message: str) -> None:
+    def finish_failed(self, job_id: str, error_message: str) -> SetupJob | None:
         now = self._clock()
-        job.status = SetupJobStatus.FAILED
-        job.current_step = STEP_LABELS[SetupJobStatus.FAILED]
-        job.error_message = error_message
-        job.finished_at = now
-        job.updated_at = now
-        job.secret_encrypted = None
-        self._storage.save_setup_job(job)
+        job = self._storage.transition_setup_job(
+            job_id,
+            NON_TERMINAL_STATUSES,
+            {
+                "status": SetupJobStatus.FAILED,
+                "current_step": STEP_LABELS[SetupJobStatus.FAILED],
+                "error_message": error_message,
+                "finished_at": now,
+                "updated_at": now,
+                "secret_encrypted": None,
+            },
+        )
+        self.forget_ephemeral_ssh_secret(job_id)
+        if job is None:
+            return None
         self.add_event(job, EventLevel.ERROR, "failed", error_message)
         self._audit.log(
             "setup_job_failed",
@@ -228,3 +307,4 @@ class SetupJobService:
             target_id=job.id,
             metadata={"error": error_message},
         )
+        return job

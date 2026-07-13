@@ -33,6 +33,7 @@ from app.core.config import Settings
 from app.core.errors import ErrorCode, error_body, install_error_handlers
 from app.core.logging import setup_logging
 from app.core.security import (
+    FernetSecretBox,
     PasswordHasher,
     PlaintextSecretBox,
     SecretBox,
@@ -55,7 +56,7 @@ from app.services.support_service import SupportService
 from app.services.user_service import UserService
 from app.storage.db import DatabaseStorage
 from app.storage.memory import InMemoryStorage
-from app.workers.setup_worker import SetupWorker, StubSetupRunner
+from app.workers.setup_worker import DeployScriptSetupRunner, SetupWorker, StubSetupRunner
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +89,16 @@ class Container:
 
 
 def build_container(settings: Settings) -> Container:
+    settings.validate()
     clock = utc_now
     database = Database(settings.database_url) if settings.database_url else None
     storage = DatabaseStorage(database) if database else InMemoryStorage()
     password_hasher = PasswordHasher()
-    secret_box = PlaintextSecretBox()
+    if settings.encryption_key:
+        secret_box: SecretBox = FernetSecretBox(settings.encryption_key)
+    else:
+        logger.warning("ENCRYPTION_KEY is not configured: using unsafe local-only secret storage")
+        secret_box = PlaintextSecretBox()
     transport: AgentTransport
     if settings.agent_mode == "http":
         transport = HttpxAgentTransport()
@@ -107,8 +113,14 @@ def build_container(settings: Settings) -> Container:
         storage, server_service, agent, secret_box, settings, audit, clock
     )
     support_service = SupportService(storage, users, audit, clock)
-    setup_jobs = SetupJobService(storage, secret_box, audit, clock)
-    runner = StubSetupRunner(settings.setup_step_delay_seconds)
+    setup_jobs = SetupJobService(
+        storage, audit, clock, worker_enabled=settings.setup_worker_enabled
+    )
+    runner = (
+        DeployScriptSetupRunner(settings)
+        if settings.setup_runner == "deploy_script"
+        else StubSetupRunner(settings.setup_step_delay_seconds)
+    )
     setup_worker = SetupWorker(storage, setup_jobs, server_service, agent, runner, settings)
     return Container(
         settings=settings,

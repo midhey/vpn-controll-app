@@ -87,6 +87,62 @@ func TestUnsignedPeersRequestRejected(t *testing.T) {
 	}
 }
 
+func TestInvalidHMACHeadersRejected(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutate     func(*http.Request)
+		wantReason string
+	}{
+		{
+			name: "key id",
+			mutate: func(req *http.Request) {
+				req.Header.Set(headerKeyID, "wrong-key")
+			},
+			wantReason: "invalid key id",
+		},
+		{
+			name: "timestamp format",
+			mutate: func(req *http.Request) {
+				req.Header.Set(headerTimestamp, "not-a-timestamp")
+			},
+			wantReason: "invalid timestamp",
+		},
+		{
+			name: "timestamp skew",
+			mutate: func(req *http.Request) {
+				req.Header.Set(headerTimestamp, "2026-07-01T11:50:00Z")
+			},
+			wantReason: "timestamp outside allowed skew",
+		},
+		{
+			name: "signature",
+			mutate: func(req *http.Request) {
+				req.Header.Set(headerSignature, "deadbeef")
+			},
+			wantReason: "invalid signature",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newTestServer(t, &fakeService{})
+			req := signedRequest(t, http.MethodGet, "/peers", nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			tt.mutate(req)
+			res := httptest.NewRecorder()
+
+			server.Handler().ServeHTTP(res, req)
+
+			if res.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+			}
+			if !bytes.Contains(res.Body.Bytes(), []byte(tt.wantReason)) {
+				t.Fatalf("body = %s, want reason %q", res.Body.String(), tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestAllowlistRejectsRemoteAddress(t *testing.T) {
 	server := newTestServer(t, &fakeService{})
 	req := signedRequest(t, http.MethodGet, "/peers", nil)

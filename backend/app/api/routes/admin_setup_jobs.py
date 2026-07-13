@@ -8,6 +8,14 @@ from app.schemas.setup_jobs import SetupJobCreateIn, SetupJobEventOut, SetupJobO
 router = APIRouter(prefix="/admin/setup-jobs", tags=["admin:setup-jobs"])
 
 
+def _out(job, container: Container) -> SetupJobOut:
+    return SetupJobOut.from_domain(
+        job,
+        agent_base_url=container.settings.setup_agent_base_url_template.format(host=job.host),
+        agent_allow_ips=container.settings.setup_agent_allow_ips,
+    )
+
+
 @router.post("", response_model=SetupJobOut, status_code=201)
 async def create_job(
     body: SetupJobCreateIn, admin: CurrentAdmin, container: Container
@@ -25,27 +33,27 @@ async def create_job(
         available_for_new_devices=body.available_for_new_devices,
         verify_before_install=body.verify_before_install,
     )
-    return SetupJobOut.from_domain(job)
+    return _out(job, container)
 
 
 @router.get("", response_model=list[SetupJobOut])
 async def list_jobs(admin: CurrentAdmin, container: Container) -> list[SetupJobOut]:
-    return [SetupJobOut.from_domain(j) for j in container.setup_jobs.list()]
+    return [_out(j, container) for j in container.setup_jobs.list()]
 
 
 @router.get("/{job_id}", response_model=SetupJobOut)
 async def get_job(job_id: str, admin: CurrentAdmin, container: Container) -> SetupJobOut:
-    return SetupJobOut.from_domain(container.setup_jobs.get(job_id))
+    return _out(container.setup_jobs.get(job_id), container)
 
 
 @router.post("/{job_id}/start", response_model=SetupJobOut)
 async def start_job(job_id: str, admin: CurrentAdmin, container: Container) -> SetupJobOut:
-    return SetupJobOut.from_domain(container.setup_jobs.start(admin, job_id))
+    return _out(container.setup_jobs.start(admin, job_id), container)
 
 
 @router.post("/{job_id}/cancel", response_model=SetupJobOut)
 async def cancel_job(job_id: str, admin: CurrentAdmin, container: Container) -> SetupJobOut:
-    return SetupJobOut.from_domain(container.setup_jobs.cancel(admin, job_id))
+    return _out(container.setup_jobs.cancel(admin, job_id), container)
 
 
 @router.get("/{job_id}/events", response_model=list[SetupJobEventOut])

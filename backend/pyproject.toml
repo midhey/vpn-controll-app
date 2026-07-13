@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "alembic>=1.13",
     "python-dotenv>=1.0",
+    "cryptography>=43.0",
 ]
 
 [dependency-groups]
@@ -19,10 +20,7 @@ dev = [
     "ruff>=0.6",
 ]
 
-# Подключаются на этапе прод-хардининга
-# (см. ../backend-fastapi-plan-for-claude.md):
-#   argon2-cffi — вместо PBKDF2 в app/core/security.py
-#   cryptography (Fernet) — вместо PlaintextSecretBox в app/core/security.py
+# На следующем этапе стоит заменить PBKDF2 на argon2id (argon2-cffi).
 
 [tool.ruff]
 line-length = 100

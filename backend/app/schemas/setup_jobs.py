@@ -10,9 +10,18 @@ from app.domain.models import AuthMethod, EventLevel, SetupJob, SetupJobEvent, S
 
 class SetupJobCreateIn(BaseModel):
     server_name: str = Field(min_length=1, max_length=100)
-    host: str = Field(min_length=1, max_length=255)
+    host: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
     ssh_port: int = Field(default=22, ge=1, le=65535)
-    ssh_username: str = Field(default="root", min_length=1, max_length=64)
+    ssh_username: str = Field(
+        default="root",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$",
+    )
     auth_method: AuthMethod
     secret: str = Field(min_length=1, max_length=10_000)  # SSH-ключ или пароль
     region_note: str | None = Field(default=None, max_length=200)
@@ -41,9 +50,17 @@ class SetupJobOut(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    agent_base_url: str | None = None
+    agent_allow_ips: list[str] = Field(default_factory=list)
 
     @classmethod
-    def from_domain(cls, job: SetupJob) -> SetupJobOut:
+    def from_domain(
+        cls,
+        job: SetupJob,
+        *,
+        agent_base_url: str | None = None,
+        agent_allow_ips: list[str] | None = None,
+    ) -> SetupJobOut:
         return cls(
             id=job.id,
             status=job.status,
@@ -62,6 +79,8 @@ class SetupJobOut(BaseModel):
             created_at=job.created_at,
             started_at=job.started_at,
             finished_at=job.finished_at,
+            agent_base_url=agent_base_url,
+            agent_allow_ips=agent_allow_ips or [],
         )
 
 

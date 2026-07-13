@@ -10,6 +10,18 @@ from typing import Any
 from app.domain.models import AuditLogEntry
 from app.storage.memory import InMemoryStorage
 
+_SENSITIVE_KEYS = {"secret", "password", "ssh_key", "private_key", "config", "vpn_url"}
+
+
+def _redact(value: Any, key: str | None = None) -> Any:
+    if key and any(token in key.lower() for token in _SENSITIVE_KEYS):
+        return "[redacted]"
+    if isinstance(value, dict):
+        return {str(k): _redact(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
+
 
 class AuditService:
     def __init__(self, storage: InMemoryStorage, clock: Callable[[], datetime]) -> None:
@@ -35,7 +47,7 @@ class AuditService:
                 actor_user_id=actor_user_id,
                 target_type=target_type,
                 target_id=target_id,
-                metadata=metadata or {},
+                metadata=_redact(metadata or {}),
                 ip_address=ip_address,
                 user_agent=user_agent,
             )

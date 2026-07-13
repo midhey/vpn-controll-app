@@ -230,6 +230,40 @@ def test_setup_job_failure_on_bad_host(client):
     assert "SSH" in job["error_message"]
 
 
+def test_setup_job_does_not_expose_or_retain_ssh_secret(client):
+    login_admin(client)
+    response = client.post(
+        "/api/v1/admin/setup-jobs",
+        json={
+            "server_name": "Secret-safe",
+            "host": "fail.example.com",
+            "auth_method": "password",
+            "secret": "do-not-return-this",
+        },
+    )
+    assert "secret" not in response.json()
+    job = _wait_job(client, response.json()["id"])
+    assert job["status"] == "failed"
+    stored = client.app.state.container.setup_jobs.get(job["id"])
+    assert stored.secret_encrypted is None
+
+
+def test_setup_job_rejects_ssh_option_injection(client):
+    login_admin(client)
+    response = client.post(
+        "/api/v1/admin/setup-jobs",
+        json={
+            "server_name": "Unsafe",
+            "host": "203.0.113.10",
+            "ssh_username": "-oProxyCommand=touch /tmp/pwned",
+            "auth_method": "password",
+            "secret": "temporary",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_audit_log_records_actions(client):
     login_admin(client)
     create_user(client, "dima", "dima-pass-1")
