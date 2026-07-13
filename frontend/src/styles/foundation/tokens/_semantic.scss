@@ -1,0 +1,22 @@
+:root {
+  color-scheme: light;
+
+  --color-background: var(--palette-neutral-50);
+  --color-surface: var(--palette-neutral-0);
+  --color-surface-muted: var(--palette-neutral-100);
+  --color-text: var(--palette-neutral-800);
+  --color-text-strong: var(--palette-neutral-950);
+  --color-text-muted: var(--palette-neutral-600);
+  --color-border: var(--palette-neutral-300);
+  --color-action: var(--palette-accent-500);
+  --color-action-hover: var(--palette-accent-700);
+  --color-action-text: var(--palette-neutral-0);
+  --color-focus-ring: var(--palette-accent-700);
+  --color-overlay: color-mix(in srgb, var(--palette-neutral-950) 68%, transparent);
+  --color-success-surface: var(--palette-green-100);
+  --color-success-text: var(--palette-green-700);
+  --color-warning-surface: var(--palette-amber-100);
+  --color-warning-text: var(--palette-amber-800);
+  --color-danger-surface: var(--palette-red-100);
+  --color-danger-text: var(--palette-red-700);
+}

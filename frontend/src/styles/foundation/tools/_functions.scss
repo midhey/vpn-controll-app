@@ -1,0 +1,20 @@
+@use "sass:math";
+@use "../config" as config;
+
+/// Converts a unitless pixel value to rem using the configured root size.
+@function rem($pixels, $base: config.$root-font-size) {
+  @if not math.is-unitless($pixels) {
+    @error "rem() expects a unitless pixel value.";
+  }
+
+  @return math.div($pixels, $base) * 1rem;
+}
+
+/// Converts a unitless pixel value to em using the supplied context.
+@function em($pixels, $base: config.$root-font-size) {
+  @if not math.is-unitless($pixels) {
+    @error "em() expects a unitless pixel value.";
+  }
+
+  @return math.div($pixels, $base) * 1em;
+}
