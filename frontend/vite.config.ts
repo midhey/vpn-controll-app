@@ -12,6 +12,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'icon.svg', 'icon-192.svg', 'icon-512.svg'],
       devOptions: {
         enabled: true,
+        suppressWarnings: true,
       },
       manifest: {
         name: 'Подсос VPN Control',
