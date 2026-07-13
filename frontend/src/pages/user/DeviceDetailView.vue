@@ -145,13 +145,13 @@ onMounted(load)
     gap: 5px;
     min-width: 0;
     padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: rgba(10, 16, 32, 0.52);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-small);
+    background: var(--color-surface-inset);
   }
 
   span {
-    color: var(--muted);
+    color: var(--color-text-muted);
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
@@ -160,7 +160,7 @@ onMounted(load)
   strong {
     min-width: 0;
     overflow-wrap: anywhere;
-    color: var(--text-strong);
+    color: var(--color-text-strong);
     font-size: 13px;
   }
 }

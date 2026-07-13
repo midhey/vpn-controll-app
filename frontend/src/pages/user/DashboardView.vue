@@ -127,11 +127,11 @@ onMounted(load)
   align-items: center;
   gap: 10px;
   padding: 16px;
-  color: var(--text-strong);
+  color: var(--color-text-strong);
   font-weight: 800;
 
   svg {
-    color: var(--accent);
+    color: var(--color-action);
   }
 }
 </style>

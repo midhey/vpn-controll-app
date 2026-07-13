@@ -160,17 +160,17 @@ onMounted(loadServers)
   justify-content: space-between;
   gap: 14px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(30, 44, 70, 0.45);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-highlight-surface);
 
   strong {
-    color: var(--text-strong);
+    color: var(--color-text-strong);
   }
 
   p {
     margin: 4px 0 0;
-    color: var(--muted);
+    color: var(--color-text-muted);
   }
 }
 </style>

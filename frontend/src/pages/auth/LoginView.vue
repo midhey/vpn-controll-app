@@ -81,10 +81,10 @@ async function submit() {
   gap: 18px;
   width: min(430px, 100%);
   padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(17, 28, 49, 0.92);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background: var(--color-auth-panel-background);
+  box-shadow: var(--shadow-surface);
 }
 
 .login-brand {
@@ -94,14 +94,14 @@ async function submit() {
 .login-copy {
   h1 {
     margin: 0;
-    color: var(--text-strong);
+    color: var(--color-text-strong);
     font-size: 30px;
     line-height: 1.1;
   }
 
   p {
     margin: 8px 0 0;
-    color: var(--muted);
+    color: var(--color-text-muted);
     font-size: 14px;
     line-height: 1.5;
   }
