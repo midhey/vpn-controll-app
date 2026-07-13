@@ -40,10 +40,15 @@ body,
 }
 
 body {
+  line-height: normal;
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 32rem),
     linear-gradient(135deg, #0a1020 0%, #0d1527 48%, #111827 100%);
   color: var(--text);
+}
+
+p {
+  margin-block: 1em;
 }
 
 a {

@@ -1,3 +1,5 @@
-@use './tokens';
-@use './layout';
-@use './components';
+@use 'generated/fonts';
+@use 'foundation/preset';
+@use 'themes/product' as product-theme;
+@use 'product/layout' as product-layout;
+@use 'product/components' as product-components;
