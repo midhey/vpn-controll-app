@@ -6,10 +6,17 @@ import { errorMessage } from '@/shared/api/client'
 import type { AdminUserOut, ContributionOut, DeviceOut, UserRole } from '@/shared/api/types'
 import { formatDate, formatMoney } from '@/shared/lib/format'
 import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
+import BaseSelect from '@/shared/ui/BaseSelect.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
+import type { SelectOption } from '@/shared/ui/select'
 import StatusBadge from '@/shared/ui/StatusBadge.vue'
+
+const roleOptions: SelectOption[] = [
+  { value: 'user', label: 'user' },
+  { value: 'admin', label: 'admin' },
+]
 
 const props = defineProps<{ id: string }>()
 
@@ -175,13 +182,7 @@ onMounted(load)
           </div>
           <form class="panel-body form-grid cols-2" @submit.prevent="save">
             <label class="field"><span>Display name</span><input v-model.trim="form.display_name" required /></label>
-            <label class="field">
-              <span>Role</span>
-              <select v-model="form.role">
-                <option value="user">user</option>
-                <option value="admin">admin</option>
-              </select>
-            </label>
+            <BaseSelect id="user-role" v-model="form.role" name="role" label="Role" :options="roleOptions" />
             <label class="field"><span>Telegram</span><input v-model.trim="form.telegram_username" /></label>
             <label class="field"><span>Device limit</span><input v-model.number="form.device_limit" type="number" min="0" :disabled="form.device_limit_unlimited" /></label>
             <BaseSwitch v-model="form.device_limit_unlimited">Без лимита устройств</BaseSwitch>
