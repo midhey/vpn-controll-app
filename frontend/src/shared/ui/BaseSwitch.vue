@@ -94,7 +94,7 @@ const inputId = computed(() => props.id || generatedId)
 
 .switch__input:checked + .switch__control {
   border-color: var(--color-action-border);
-  background: var(--color-action);
+  background: var(--background-action);
 }
 
 .switch__input:checked + .switch__control .switch__thumb {
@@ -104,7 +104,7 @@ const inputId = computed(() => props.id || generatedId)
 
 .switch:not(.is-disabled):hover .switch__input:checked + .switch__control {
   border-color: var(--color-action-focus-border);
-  background: var(--color-action-hover);
+  background: var(--background-action);
 }
 
 .switch__input:focus-visible + .switch__control {
