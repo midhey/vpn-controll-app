@@ -5,6 +5,7 @@ import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { SupportSettingsOut } from '@/shared/api/types'
 import { formatDate } from '@/shared/lib/format'
+import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
 
@@ -95,7 +96,7 @@ onMounted(load)
 
     <section v-if="!loading" class="panel">
       <form class="panel-body form-grid cols-2" @submit.prevent="save">
-        <label class="check-field"><input v-model="form.is_enabled" type="checkbox" /> Включить поддержку</label>
+        <BaseSwitch v-model="form.is_enabled">Включить поддержку</BaseSwitch>
         <label class="field"><span>Title</span><input v-model.trim="form.title" required maxlength="100" /></label>
         <label class="field"><span>Description</span><textarea v-model.trim="form.description" rows="4" maxlength="1000"></textarea></label>
         <label class="field"><span>SBP phone</span><input v-model.trim="form.sbp_phone" /></label>

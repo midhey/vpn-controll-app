@@ -5,6 +5,7 @@ import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { AdminUserOut, ContributionOut, DeviceOut, UserRole } from '@/shared/api/types'
 import { formatDate, formatMoney } from '@/shared/lib/format'
+import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
@@ -183,9 +184,9 @@ onMounted(load)
             </label>
             <label class="field"><span>Telegram</span><input v-model.trim="form.telegram_username" /></label>
             <label class="field"><span>Device limit</span><input v-model.number="form.device_limit" type="number" min="0" :disabled="form.device_limit_unlimited" /></label>
-            <label class="check-field"><input v-model="form.device_limit_unlimited" type="checkbox" /> Без лимита устройств</label>
-            <label class="check-field"><input v-model="form.show_server_support" type="checkbox" /> Показывать поддержку</label>
-            <label class="check-field"><input v-model="form.free_access" type="checkbox" /> Free access</label>
+            <BaseSwitch v-model="form.device_limit_unlimited">Без лимита устройств</BaseSwitch>
+            <BaseSwitch v-model="form.show_server_support">Показывать поддержку</BaseSwitch>
+            <BaseSwitch v-model="form.free_access">Free access</BaseSwitch>
             <label class="field"><span>Note</span><textarea v-model.trim="form.note" rows="3"></textarea></label>
             <div class="page-actions">
               <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Сохранить</button>

@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { AuthMethod } from '@/shared/api/types'
+import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 
 const router = useRouter()
@@ -93,9 +94,9 @@ docker ps --filter name=amnezia-awg2</code></pre>
           <input v-model="form.secret" required type="password" autocomplete="new-password" />
         </label>
         <label class="field"><span>Регион</span><input v-model.trim="form.region_note" /></label>
-        <label class="check-field"><input v-model="form.install_awg" type="checkbox" /> Проверить существующее AWG-окружение</label>
-        <label class="check-field"><input v-model="form.available_for_new_devices" type="checkbox" /> Доступен для новых устройств</label>
-        <label class="check-field"><input v-model="form.verify_before_install" type="checkbox" /> Выполнить SSH preflight до загрузки файлов</label>
+        <BaseSwitch v-model="form.install_awg">Проверить существующее AWG-окружение</BaseSwitch>
+        <BaseSwitch v-model="form.available_for_new_devices">Доступен для новых устройств</BaseSwitch>
+        <BaseSwitch v-model="form.verify_before_install">Выполнить SSH preflight до загрузки файлов</BaseSwitch>
         <div class="page-actions">
           <RouterLink class="ghost-button" to="/admin/servers">Отмена</RouterLink>
           <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Установить</button>

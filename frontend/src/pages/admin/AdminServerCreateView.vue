@@ -4,6 +4,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
+import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 
 const router = useRouter()
@@ -69,7 +70,7 @@ async function submit() {
         <label class="field"><span>Agent key id</span><input v-model.trim="form.agent_key_id" maxlength="100" /></label>
         <label class="field"><span>Agent secret</span><input v-model="form.agent_secret" type="password" maxlength="500" autocomplete="new-password" /></label>
         <label class="field"><span>Allowed IP note</span><input v-model.trim="form.agent_allowed_ip_note" maxlength="200" /></label>
-        <label class="check-field"><input v-model="form.is_available_for_new_devices" type="checkbox" /> Доступен для новых устройств</label>
+        <BaseSwitch v-model="form.is_available_for_new_devices">Доступен для новых устройств</BaseSwitch>
         <div class="page-actions">
           <RouterLink class="ghost-button" to="/admin/servers">Отмена</RouterLink>
           <button class="button" type="submit" :disabled="pending"><Save :size="16" /> Создать</button>

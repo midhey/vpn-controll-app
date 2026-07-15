@@ -5,6 +5,7 @@ import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { AdminServerOut, AgentPeerOut } from '@/shared/api/types'
 import { compactId, formatDate } from '@/shared/lib/format'
+import BaseSwitch from '@/shared/ui/BaseSwitch.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
@@ -186,7 +187,7 @@ onMounted(async () => {
             <label class="field"><span>Agent key id</span><input v-model.trim="form.agent_key_id" /></label>
             <label class="field"><span>New agent secret</span><input v-model="form.agent_secret" type="password" autocomplete="new-password" /></label>
             <label class="field"><span>Allowed IP note</span><input v-model.trim="form.agent_allowed_ip_note" /></label>
-            <label class="check-field"><input v-model="form.is_available_for_new_devices" type="checkbox" /> Доступен для новых устройств</label>
+            <BaseSwitch v-model="form.is_available_for_new_devices">Доступен для новых устройств</BaseSwitch>
             <label class="field"><span>AWG container</span><input v-model.trim="form.awg_container_name" /></label>
             <label class="field"><span>AWG interface</span><input v-model.trim="form.awg_interface" /></label>
             <label class="field"><span>AWG config path</span><input v-model.trim="form.awg_config_path" /></label>

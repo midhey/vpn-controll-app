@@ -144,19 +144,6 @@
   }
 }
 
-.check-field {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--color-text);
-  font-size: 13px;
-  font-weight: 650;
-
-  input {
-    width: 16px;
-    height: 16px;
-  }
-}
 
 .table-wrap {
   overflow: auto;
