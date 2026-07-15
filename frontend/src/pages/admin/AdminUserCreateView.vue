@@ -5,7 +5,14 @@ import { useRouter } from 'vue-router'
 import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { UserRole } from '@/shared/api/types'
+import BaseSelect from '@/shared/ui/BaseSelect.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
+import type { SelectOption } from '@/shared/ui/select'
+
+const roleOptions: SelectOption[] = [
+  { value: 'user', label: 'user' },
+  { value: 'admin', label: 'admin' },
+]
 
 const router = useRouter()
 const pending = ref(false)
@@ -64,13 +71,7 @@ async function submit() {
         <label class="field"><span>Login</span><input v-model.trim="form.login" required maxlength="64" /></label>
         <label class="field"><span>Display name</span><input v-model.trim="form.display_name" required maxlength="100" /></label>
         <label class="field"><span>Password</span><input v-model="form.password" type="password" required minlength="6" /></label>
-        <label class="field">
-          <span>Role</span>
-          <select v-model="form.role">
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-          </select>
-        </label>
+        <BaseSelect id="new-user-role" v-model="form.role" name="role" label="Role" :options="roleOptions" />
         <label class="field"><span>Telegram</span><input v-model.trim="form.telegram_username" maxlength="64" placeholder="username без @" /></label>
         <label class="field"><span>Device limit</span><input v-model.number="form.device_limit" type="number" min="0" :disabled="form.device_limit_unlimited" /></label>
         <label class="check-field"><input v-model="form.device_limit_unlimited" type="checkbox" /> Без лимита устройств</label>

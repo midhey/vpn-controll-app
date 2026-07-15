@@ -5,9 +5,18 @@ import { adminApi } from '@/domains/admin/api'
 import { errorMessage } from '@/shared/api/client'
 import type { AuditLogOut } from '@/shared/api/types'
 import { compactId, formatDate } from '@/shared/lib/format'
+import BaseSelect from '@/shared/ui/BaseSelect.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
+import type { SelectOption } from '@/shared/ui/select'
+
+const limitOptions: SelectOption[] = [
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 250, label: '250' },
+  { value: 500, label: '500' },
+]
 
 const logs = ref<AuditLogOut[]>([])
 const limit = ref(100)
@@ -37,15 +46,15 @@ onMounted(load)
         <p>События backend без раскрытия секретов и сырых payload-дампов.</p>
       </div>
       <div class="page-actions">
-        <label class="field audit-limit">
-          <span>Limit</span>
-          <select v-model.number="limit" @change="load">
-            <option :value="50">50</option>
-            <option :value="100">100</option>
-            <option :value="250">250</option>
-            <option :value="500">500</option>
-          </select>
-        </label>
+        <BaseSelect
+          id="audit-limit"
+          v-model="limit"
+          class="audit-limit"
+          name="limit"
+          label="Limit"
+          :options="limitOptions"
+          @change="load"
+        />
         <button class="ghost-button" type="button" @click="load"><RotateCw :size="16" /> Обновить</button>
       </div>
     </header>

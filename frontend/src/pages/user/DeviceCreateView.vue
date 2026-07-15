@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { Check, Plus, Server } from '@lucide/vue'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import * as devicesApi from '@/domains/devices/api'
 import * as serversApi from '@/domains/servers/api'
 import { errorMessage } from '@/shared/api/client'
 import type { DeviceCreateOut, ServerOut } from '@/shared/api/types'
 import { formatDate } from '@/shared/lib/format'
 import CopyField from '@/shared/ui/CopyField.vue'
+import BaseSelect from '@/shared/ui/BaseSelect.vue'
 import EmptyState from '@/shared/ui/EmptyState.vue'
 import ErrorBanner from '@/shared/ui/ErrorBanner.vue'
 import LoadingState from '@/shared/ui/LoadingState.vue'
+import type { SelectOption } from '@/shared/ui/select'
 import StatusBadge from '@/shared/ui/StatusBadge.vue'
 
 const servers = ref<ServerOut[]>([])
@@ -21,6 +23,13 @@ const form = reactive({
   name: '',
   server_node_id: '',
 })
+const serverOptions = computed<SelectOption[]>(() => [
+  { value: '', label: 'Авто-выбор backend' },
+  ...servers.value.map((server) => ({
+    value: server.id,
+    label: `${server.name}${server.region_note ? ` · ${server.region_note}` : ''}`,
+  })),
+])
 
 async function loadServers() {
   loading.value = true
@@ -80,15 +89,13 @@ onMounted(loadServers)
             <span>Имя устройства</span>
             <input v-model.trim="form.name" maxlength="64" required placeholder="Например, iPhone 15" />
           </label>
-          <label class="field">
-            <span>Сервер</span>
-            <select v-model="form.server_node_id">
-              <option value="">Авто-выбор backend</option>
-              <option v-for="server in servers" :key="server.id" :value="server.id">
-                {{ server.name }}{{ server.region_note ? ` · ${server.region_note}` : '' }}
-              </option>
-            </select>
-          </label>
+          <BaseSelect
+            id="device-server"
+            v-model="form.server_node_id"
+            name="server_node_id"
+            label="Сервер"
+            :options="serverOptions"
+          />
           <button class="button" type="submit" :disabled="pending || !form.name">
             <Plus :size="17" />
             {{ pending ? 'Выпускаю…' : 'Выпустить config' }}

@@ -144,6 +144,132 @@
   }
 }
 
+.select-field {
+  min-width: 0;
+}
+
+.select-field__control {
+  position: relative;
+  min-width: 0;
+}
+
+.select-field__native {
+  appearance: auto;
+
+  &.is-form-proxy {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.select-field__trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  outline: 0;
+  color: var(--color-text-strong);
+  background: var(--color-field-background);
+  font-size: 14px;
+  text-align: left;
+
+  &:focus-visible {
+    border-color: var(--color-action-focus-border);
+    box-shadow: 0 0 0 3px var(--color-action-focus-shadow);
+  }
+}
+
+.select-field__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-placeholder {
+    color: var(--color-text-muted);
+  }
+}
+
+.select-field__chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  transition: transform 160ms ease;
+}
+
+.select-field.is-open .select-field__chevron {
+  transform: rotate(180deg);
+}
+
+.select-field__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+  list-style: none;
+}
+
+.select-field__option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-small);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 14px;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &.is-active {
+    color: var(--color-text-strong);
+    background: var(--color-surface-elevated);
+  }
+
+  &.is-selected {
+    color: var(--color-text-strong);
+    background: var(--color-highlight-surface);
+  }
+
+  &[aria-disabled="true"] {
+    color: var(--color-text-subtle);
+    cursor: not-allowed;
+    opacity: 0.62;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-field__chevron {
+    transition: none;
+  }
+}
+
 .check-field {
   display: flex;
   align-items: center;
